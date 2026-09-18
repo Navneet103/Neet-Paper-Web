@@ -1,30 +1,45 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:neet_paper_test/main.dart';
+import 'package:neet_paper_test/core/theme/app_theme.dart';
+import 'package:neet_paper_test/core/widgets/app_components.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('AppBadge renders label and icon correctly', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AppBadge(
+            text: 'Physics',
+            icon: Icons.science,
+            backgroundColor: AppColors.primaryLight,
+            textColor: AppColors.primary,
+          ),
+        ),
+      ),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('Physics'), findsOneWidget);
+    expect(find.byIcon(Icons.science), findsOneWidget);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('AppMetricCard displays title, value and icon', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: const Scaffold(
+          body: AppMetricCard(
+            title: 'Questions in Bank',
+            value: '720',
+            subtitle: 'Ready offline',
+            icon: Icons.library_books,
+          ),
+        ),
+      ),
+    );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Questions in Bank'), findsOneWidget);
+    expect(find.text('720'), findsOneWidget);
+    expect(find.text('Ready offline'), findsOneWidget);
+    expect(find.byIcon(Icons.library_books), findsOneWidget);
   });
 }

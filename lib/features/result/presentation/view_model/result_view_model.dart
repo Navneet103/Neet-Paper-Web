@@ -49,9 +49,7 @@ class ResultViewModel extends ChangeNotifier {
       TestResult? result = await repository.getResultByTestId(testId);
       
       // If not found, calculate it
-      if (result == null) {
-        result = await repository.calculateAndSaveResult(testId);
-      }
+      result ??= await repository.calculateAndSaveResult(testId);
 
       final review = await repository.getDetailedReview(testId);
 

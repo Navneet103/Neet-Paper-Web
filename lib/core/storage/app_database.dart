@@ -70,7 +70,6 @@ class AppDatabase extends _$AppDatabase {
   @override
   int get schemaVersion => 2;
 
-  // Cleanup helper for enterprise data management
   Future<void> clearAllData() async {
     await transaction(() async {
       for (final table in allTables) {
@@ -91,6 +90,15 @@ class AppDatabase extends _$AppDatabase {
   );
 
   static QueryExecutor _openConnection() {
-    return driftDatabase(name: 'neet_exam_db');
+    return driftDatabase(
+      name: 'neet_exam_db',
+      native: const DriftNativeOptions(
+        shareAcrossIsolates: true,
+      ),
+      web: DriftWebOptions(
+        sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+        driftWorker: Uri.parse('drift_worker.js'),
+      ),
+    );
   }
 }

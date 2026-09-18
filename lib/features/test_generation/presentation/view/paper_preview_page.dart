@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/storage/app_database.dart';
+import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/app_components.dart';
 import '../../../../injection/injection_container.dart';
 import '../../data/repository/test_generation_repository.dart';
-import '../../../../core/storage/app_database.dart';
 
 class PaperPreviewPage extends StatefulWidget {
   final int testId;
@@ -38,157 +40,306 @@ class _PaperPreviewPageState extends State<PaperPreviewPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (_test == null) return const Scaffold(body: Center(child: Text('Test not found')));
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
+
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+
+    if (_test == null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(title: const Text('Paper Preview')),
+        body: AppEmptyState(
+          icon: Icons.error_outline_rounded,
+          title: 'Test Not Found',
+          message: 'The requested test could not be located in local storage.',
+          actionLabel: 'Return to Dashboard',
+          onAction: () => context.go('/dashboard'),
+        ),
+      );
+    }
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Paper Preview'),
+        title: Text(isMobile ? 'Paper Preview' : 'Paper Overview & Instructions'),
         leading: IconButton(
-          icon: const Icon(Icons.close),
+          icon: const Icon(Icons.close_rounded),
           onPressed: () => context.go('/create-test'),
-          tooltip: 'Cancel and return to configuration',
+          tooltip: 'Cancel and return',
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
-        child: Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 900),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(),
-                const SizedBox(height: 32),
-                _buildInstructions(),
-                const SizedBox(height: 32),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Question Preview', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                    Text('Total questions: ${_questions.length}', style: const TextStyle(color: Colors.grey)),
-                  ],
-                ),
-                const Divider(),
-                const SizedBox(height: 16),
-                _buildQuestionList(),
-                const SizedBox(height: 48),
-                _buildStartButton(),
-                const SizedBox(height: 24),
-              ],
-            ),
+        child: AppPageContainer(
+          maxWidth: 860,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Test Specification Card
+              _buildSpecificationCard(isMobile),
+              const SizedBox(height: 24),
+
+              // Instructions Guidelines Card
+              _buildInstructionsCard(isMobile),
+              const SizedBox(height: 32),
+
+              // Question Preview Section
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    isMobile ? 'Questions Sample' : 'Curated Questions Sample',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.4),
+                  ),
+                  AppBadge(
+                    text: '${_questions.length} Qs',
+                    backgroundColor: AppColors.primaryLight,
+                    textColor: AppColors.primary,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _buildQuestionList(),
+              const SizedBox(height: 40),
+
+              // Start Exam CTA
+              _buildStartButton(),
+              const SizedBox(height: 40),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Card(
-      elevation: 0,
-      color: Colors.blue.shade50,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.blue.shade100)),
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          children: [
-            Text(_test!.name, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1A73E8))),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _headerItem(Icons.help_outline, '${_test!.totalQuestions} Questions'),
-                _headerItem(Icons.timer_outlined, '${_test!.durationMinutes} Minutes'),
-                _headerItem(Icons.grade_outlined, '${_test!.totalMarks.toInt()} Marks'),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _headerItem(IconData icon, String text) {
-    return Row(
-      children: [
-        Icon(icon, color: Colors.blue, size: 20),
-        const SizedBox(width: 8),
-        Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-      ],
-    );
-  }
-
-  Widget _buildInstructions() {
+  Widget _buildSpecificationCard(bool isMobile) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isMobile ? 20 : 32),
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E1B4B), Color(0xFF312E81), Color(0xFF4338CA)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: AppColors.shadowMd,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Exam Guidelines:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          _bulletPoint('Each correct answer adds ${_test!.positiveMarking.toInt()} marks.'),
-          _bulletPoint('Each wrong answer deducts ${_test!.negativeMarking.toInt()} marks.'),
-          _bulletPoint('You can "Mark for Review" questions to return to them later.'),
-          _bulletPoint('The timer starts the moment you click the button below.'),
-          _bulletPoint('Do not refresh the browser during the exam (though your progress is saved).'),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'CONFIDENTIAL • MOCK EXAM',
+                  style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5),
+                ),
+              ),
+              if (!isMobile) ...[
+                const Spacer(),
+                const Icon(Icons.offline_bolt_rounded, color: Colors.greenAccent, size: 18),
+                const SizedBox(width: 4),
+                const Text('Offline Mode Enabled', style: TextStyle(color: Colors.white70, fontSize: 11)),
+              ],
+            ],
+          ),
+          const SizedBox(height: 20),
+          Text(
+            _test!.name,
+            style: TextStyle(
+              fontSize: isMobile ? 22 : 28, 
+              fontWeight: FontWeight.w800, 
+              color: Colors.white, 
+              letterSpacing: -0.6
+            ),
+          ),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _specItem(Icons.help_outline_rounded, '${_test!.totalQuestions}', 'Questions', isMobile),
+                _specItem(Icons.timer_outlined, '${_test!.durationMinutes}m', 'Time', isMobile),
+                _specItem(Icons.military_tech_outlined, '${_test!.totalMarks.toInt()}', 'Max Marks', isMobile),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _bulletPoint(String text) {
+  Widget _specItem(IconData icon, String value, String label, bool isMobile) {
+    return Column(
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white70, size: isMobile ? 14 : 16),
+            const SizedBox(width: 6),
+            Text(value, style: TextStyle(color: Colors.white, fontSize: isMobile ? 16 : 20, fontWeight: FontWeight.w800)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
+  Widget _buildInstructionsCard(bool isMobile) {
+    return Container(
+      padding: EdgeInsets.all(isMobile ? 18 : 24),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppColors.shadowSm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.rule_rounded, color: AppColors.primary, size: 20),
+              const SizedBox(width: 10),
+              Text(
+                isMobile ? 'Rules & Instructions' : 'Candidate Instructions & Rules',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _instructionBullet('1', 'The examination consists of multiple-choice questions with 4 options.'),
+          _instructionBullet('2', 'Marking: +4 marks for Correct, -1 mark for Incorrect answers.'),
+          _instructionBullet('3', 'Unattempted questions receive 0 marks (No penalty).'),
+          _instructionBullet('4', 'The countdown begins immediately upon clicking start.'),
+          _instructionBullet('5', 'The exam runs completely offline. Do not close the window.'),
+        ],
+      ),
+    );
+  }
+
+  Widget _instructionBullet(String number, String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.check_circle_outline, size: 18, color: Colors.green),
-          const SizedBox(width: 12),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 15))),
+          Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: AppColors.primaryLight,
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Text(number, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.primary)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 13.5, color: AppColors.textSecondary, height: 1.5),
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildQuestionList() {
-    return ListView.separated(
+    final previewCount = _questions.length > 5 ? 5 : _questions.length;
+
+    return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: _questions.length > 5 ? 5 : _questions.length,
-      separatorBuilder: (context, index) => const Divider(),
+      itemCount: previewCount,
       itemBuilder: (context, index) {
-        return ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: CircleAvatar(
-            backgroundColor: Colors.blue.shade100,
-            radius: 14,
-            child: Text('${index + 1}', style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
+        final q = _questions[index];
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
           ),
-          title: Text(_questions[index].questionText, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text('${_questions[index].subject} • ${_questions[index].topic}'),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Q${index + 1}.',
+                style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary, fontSize: 13),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      q.questionText,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary, height: 1.4),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        AppBadge(text: q.subject ?? 'General', backgroundColor: AppColors.surfaceSubtle, textColor: AppColors.textSecondary),
+                        if (q.topic != null && q.topic!.isNotEmpty)
+                          AppBadge(text: q.topic!, backgroundColor: AppColors.surfaceSubtle, textColor: AppColors.textMuted),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
   }
 
   Widget _buildStartButton() {
-    return SizedBox(
+    return Container(
       width: double.infinity,
       height: 60,
-      child: ElevatedButton(
-        onPressed: () => context.go('/exam/${widget.testId}', extra: _questions),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF1A73E8),
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          elevation: 4,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ElevatedButton.icon(
+        onPressed: () {
+          context.push('/exam/${widget.testId}', extra: _questions);
+        },
+        icon: const Icon(Icons.play_arrow_rounded, size: 28),
+        label: const Text(
+          'START EXAMINATION NOW',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.5),
         ),
-        child: const Text('START EXAMINATION', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
       ),
     );
   }
