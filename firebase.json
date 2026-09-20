@@ -13,6 +13,10 @@
           {
             "key": "Content-Type",
             "value": "application/wasm"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
           }
         ]
       },
@@ -32,7 +36,7 @@
     ],
     "rewrites": [
       {
-        "source": "**",
+        "source": "**/!(*.*)",
         "destination": "/index.html"
       }
     ]

@@ -24,8 +24,8 @@ dependencies:
   go_router: ^14.2.0
 
   # Database (Offline-first)
-  drift: ^2.19.0
-  drift_flutter: ^0.2.0
+  drift: 2.28.2
+  drift_flutter: 0.2.7
   sqlite3: ^2.4.3
 
   # Data Parsing
@@ -43,6 +43,9 @@ dependencies:
   # Functional programming & Models
   freezed_annotation: ^2.4.4
   json_annotation: ^4.9.0
+  firebase_core: ^4.15.0
+  cloud_firestore: ^6.10.0
+  firebase_auth: ^6.7.0
 
 dev_dependencies:
   flutter_test:
