@@ -70,7 +70,7 @@ class _ResultPageState extends State<ResultPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Score Card Hero
-                  _buildScoreHero(res, isMobile),
+                  _buildScoreHero(state, isMobile),
                   const SizedBox(height: 28),
 
                   // Subject Breakdown
@@ -82,7 +82,7 @@ class _ResultPageState extends State<ResultPage> {
                   const SizedBox(height: 36),
 
                   // Detailed Question Review Section
-                  _buildReviewSection(state, res, isMobile),
+                  _buildReviewSection(state, isMobile),
                   const SizedBox(height: 40),
                 ],
               ),
@@ -93,8 +93,9 @@ class _ResultPageState extends State<ResultPage> {
     );
   }
 
-  Widget _buildScoreHero(dynamic res, bool isMobile) {
-    final accuracy = (res.accuracy as num).toDouble();
+  Widget _buildScoreHero(ResultState state, bool isMobile) {
+    final res = state.result!;
+    final accuracy = res.accuracy;
     final isGood = accuracy >= 70;
     final isAvg = accuracy >= 50;
     final badgeColor = isGood ? AppColors.success : (isAvg ? AppColors.warning : AppColors.error);
@@ -181,7 +182,7 @@ class _ResultPageState extends State<ResultPage> {
                   children: [
                     _scoreStat('Correct', '${res.correctCount}', const Color(0xFF34D399), Icons.check_circle_rounded),
                     _scoreStat('Incorrect', '${res.wrongCount}', const Color(0xFFF87171), Icons.cancel_rounded),
-                    _scoreStat('Skipped', '${res.unattemptedCount}', Colors.white70, Icons.remove_circle_outline_rounded),
+                    _scoreStat('Skipped', '${state.unattemptedCount}', Colors.white70, Icons.remove_circle_outline_rounded),
                     _scoreStat('Accuracy', '${res.accuracy.toStringAsFixed(0)}%', Colors.amberAccent, Icons.pie_chart_rounded),
                   ],
                 );
@@ -191,7 +192,7 @@ class _ResultPageState extends State<ResultPage> {
                 children: [
                   _scoreStat('Correct', '${res.correctCount}', const Color(0xFF34D399), Icons.check_circle_rounded),
                   _scoreStat('Incorrect', '${res.wrongCount}', const Color(0xFFF87171), Icons.cancel_rounded),
-                  _scoreStat('Skipped', '${res.unattemptedCount}', Colors.white70, Icons.remove_circle_outline_rounded),
+                  _scoreStat('Skipped', '${state.unattemptedCount}', Colors.white70, Icons.remove_circle_outline_rounded),
                   _scoreStat('Accuracy', '${res.accuracy.toStringAsFixed(1)}%', Colors.amberAccent, Icons.pie_chart_rounded),
                 ],
               );
@@ -348,7 +349,8 @@ class _ResultPageState extends State<ResultPage> {
     );
   }
 
-  Widget _buildReviewSection(ResultState state, dynamic res, bool isMobile) {
+  Widget _buildReviewSection(ResultState state, bool isMobile) {
+    final res = state.result!;
     final filtered = state.detailedReview.where((r) {
       if (_reviewFilter == 'correct') return r['isCorrect'] == true;
       if (_reviewFilter == 'wrong') return r['isCorrect'] == false && r['isUnattempted'] != true;
@@ -375,7 +377,7 @@ class _ResultPageState extends State<ResultPage> {
               const SizedBox(width: 8),
               _filterChip('wrong', 'Incorrect (${res.wrongCount})', AppColors.error),
               const SizedBox(width: 8),
-              _filterChip('unattempted', 'Skipped (${res.unattemptedCount})', AppColors.textSecondary),
+              _filterChip('unattempted', 'Skipped (${state.unattemptedCount})', AppColors.textSecondary),
             ],
           ),
         ),

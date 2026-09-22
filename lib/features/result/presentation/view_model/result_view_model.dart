@@ -17,6 +17,9 @@ class ResultState {
     this.errorMessage,
   });
 
+  int get totalQuestions => detailedReview.length;
+  int get unattemptedCount => detailedReview.where((r) => r['isUnattempted'] == true).length;
+
   ResultState copyWith({
     ResultStatus? status,
     TestResult? result,
