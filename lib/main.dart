@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:neet_paper_test/config/routes/app_router.dart';
 import 'package:neet_paper_test/injection/injection_container.dart' as di;
-// import 'firebase_options.dart'; // flutterfire configure chalane ke baad ise uncomment karein
+import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 
 void main() async {
@@ -11,15 +11,12 @@ void main() async {
   
   // 1. Firebase Initialize karein
   try {
-    // Agar aapne firebase setup kar liya hai toh niche wala code uncomment karein:
-    /*
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    */
-    print("Firebase Setup Ready (Configuration Pending)");
+    debugPrint("Firebase Connected Successfully to neet-paper-test");
   } catch (e) {
-    print("Firebase Error: $e");
+    debugPrint("Firebase Error: $e");
   }
 
   // 2. Initialize Dependency Injection (Drift Database init yahan hoga)

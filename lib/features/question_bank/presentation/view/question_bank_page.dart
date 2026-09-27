@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/auth/auth_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/app_components.dart';
 import '../../../../injection/injection_container.dart';
@@ -39,6 +40,72 @@ class _QuestionBankPageState extends State<QuestionBankPage> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = sl<AuthService>();
+    if (!auth.isAdmin) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('Question Repository'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () => context.go('/dashboard'),
+          ),
+        ),
+        body: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 480),
+            padding: const EdgeInsets.all(32),
+            margin: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.border),
+              boxShadow: AppColors.shadowSm,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: AppColors.primaryLight,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.lock_outline_rounded, color: AppColors.primary, size: 36),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Question Repository Restricted',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'The raw question bank and answer keys are accessible to administrators and teachers only. Students can test their knowledge in CBT exam mode.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.5),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => context.push('/daily-test'),
+                    icon: const Icon(Icons.alarm_on_rounded, size: 18),
+                    label: const Text('TAKE DAILY LIVE TEST'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => context.go('/dashboard'),
+                  child: const Text('Back to Dashboard'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 768; // Match global breakpoint
 
@@ -56,15 +123,17 @@ class _QuestionBankPageState extends State<QuestionBankPage> {
               const SizedBox(width: 8),
             ]
           : [
-              OutlinedButton.icon(
-                onPressed: () => context.push('/import').then((_) => _viewModel.init()),
-                icon: const Icon(Icons.upload_file_rounded, size: 16),
-                label: const Text('Import'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              if (sl<AuthService>().isAdmin) ...[
+                OutlinedButton.icon(
+                  onPressed: () => context.push('/import').then((_) => _viewModel.init()),
+                  icon: const Icon(Icons.upload_file_rounded, size: 16),
+                  label: const Text('Import'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
+                const SizedBox(width: 8),
+              ],
               ElevatedButton.icon(
                 onPressed: () => context.push('/create-test'),
                 icon: const Icon(Icons.add_task_rounded, size: 16),
@@ -114,9 +183,13 @@ class _QuestionBankPageState extends State<QuestionBankPage> {
                             title: 'No questions found',
                             message: state.selectedSubject != null
                                 ? 'No questions match the "${state.selectedSubject}" filter.'
-                                : 'Your question bank is empty. Import an Excel file to get started.',
-                            actionLabel: 'Import Questions',
-                            onAction: () => context.push('/import').then((_) => _viewModel.init()),
+                                : (sl<AuthService>().isAdmin
+                                    ? 'Your question bank is empty. Import an Excel file to get started.'
+                                    : 'No questions available under this category. Select another subject.'),
+                            actionLabel: sl<AuthService>().isAdmin ? 'Import Questions' : 'Create Test',
+                            onAction: () => sl<AuthService>().isAdmin
+                                ? context.push('/import').then((_) => _viewModel.init())
+                                : context.push('/create-test'),
                           )
                         : _buildQuestionList(state, isMobile),
               ),
@@ -128,7 +201,7 @@ class _QuestionBankPageState extends State<QuestionBankPage> {
           );
         },
       ),
-      floatingActionButton: isMobile 
+      floatingActionButton: isMobile && sl<AuthService>().isAdmin
         ? FloatingActionButton(
             onPressed: () => context.push('/import').then((_) => _viewModel.init()),
             backgroundColor: AppColors.primary,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/auth/auth_service.dart';
 import '../../../../core/storage/app_database.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/app_components.dart';
@@ -10,10 +11,12 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final auth = sl<AuthService>();
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('System Settings & Configuration'),
+        title: const Text('App Preferences & Settings'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.go('/dashboard'),
@@ -26,22 +29,60 @@ class SettingsPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const AppSectionHeader(
-                title: 'System Preferences',
-                subtitle: 'Manage local database storage, offline runtime, and system reset',
+                title: 'Application Preferences',
+                subtitle: 'Configure examination rules, aspirant profile, and display options',
               ),
               const SizedBox(height: 8),
 
-              // Section: Offline Architecture & Storage
+              // Section 1: Candidate Profile Info
               _buildSettingsCard(
-                title: 'Local Engine & Architecture',
-                icon: Icons.offline_bolt_rounded,
+                title: 'Aspirant Profile',
+                icon: Icons.person_outline_rounded,
                 iconColor: AppColors.primary,
                 children: [
                   _settingsTile(
-                    title: 'Offline Execution Engine',
-                    subtitle: 'Full client-side operation with zero network roundtrips during exams',
+                    title: auth.isAuthenticated ? auth.currentUser!.displayName : 'Guest Aspirant',
+                    subtitle: auth.isAuthenticated
+                        ? (auth.currentUser!.phone != null && auth.currentUser!.phone!.isNotEmpty
+                            ? '${auth.currentUser!.email} • +91 ${auth.currentUser!.phone}'
+                            : auth.currentUser!.email)
+                        : 'Log in to sync cloud submissions & test history',
+                    trailing: OutlinedButton(
+                      onPressed: () {
+                        if (auth.isAuthenticated) {
+                          auth.signOut();
+                        } else {
+                          context.push('/login');
+                        }
+                      },
+                      child: Text(auth.isAuthenticated ? 'Sign Out' : 'Sign In'),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  _settingsTile(
+                    title: 'Account Role',
+                    subtitle: auth.isAdmin ? 'Administrator (Full Access)' : 'Student Aspirant (NEET 2026)',
+                    trailing: AppBadge(
+                      text: auth.isAdmin ? 'Admin' : 'Student',
+                      backgroundColor: auth.isAdmin ? const Color(0xFF1E1B4B) : AppColors.primaryLight,
+                      textColor: auth.isAdmin ? Colors.white : AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // Section 2: Examination Environment
+              _buildSettingsCard(
+                title: 'Examination & Practice Mode',
+                icon: Icons.speed_rounded,
+                iconColor: const Color(0xFF8B5CF6),
+                children: [
+                  _settingsTile(
+                    title: 'Marking Standard',
+                    subtitle: 'Official NTA: +4 marks for correct, -1 penalty for incorrect',
                     trailing: const AppBadge(
-                      text: 'Active • Ready',
+                      text: '+4 / -1 Active',
                       backgroundColor: AppColors.successLight,
                       textColor: AppColors.success,
                       icon: Icons.check_circle_rounded,
@@ -49,99 +90,129 @@ class SettingsPage extends StatelessWidget {
                   ),
                   const Divider(height: 1),
                   _settingsTile(
-                    title: 'Storage Provider',
-                    subtitle: 'Relational database powered by Drift SQLite & IndexedDB cache',
+                    title: 'Timer Warning Alerts',
+                    subtitle: 'Visual amber alert at 10m and red warning at 5m remaining',
                     trailing: const AppBadge(
-                      text: 'SQLite 3',
+                      text: 'Enabled',
                       backgroundColor: AppColors.surfaceSubtle,
                       textColor: AppColors.textSecondary,
                     ),
                   ),
                   const Divider(height: 1),
                   _settingsTile(
-                    title: 'Release Version',
-                    subtitle: 'Enterprise Desktop & Web Build',
+                    title: 'Question Palette Grid',
+                    subtitle: 'Instant jumping, review later marking, and color-coded status',
+                    trailing: const AppBadge(
+                      text: 'Interactive',
+                      backgroundColor: AppColors.surfaceSubtle,
+                      textColor: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // Section 3: App Information
+              _buildSettingsCard(
+                title: 'About NEET Master',
+                icon: Icons.info_outline_rounded,
+                iconColor: const Color(0xFF10B981),
+                children: [
+                  _settingsTile(
+                    title: 'System Release',
+                    subtitle: 'Modern NTA CBT Mock Test Engine with Cloud Sync',
                     trailing: const Text(
-                      'v1.0.0 (Stable)',
+                      'v1.0.0 Ready',
                       style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textMuted),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // Section: Question Bank Management Shortcuts
-              _buildSettingsCard(
-                title: 'Quick Actions',
-                icon: Icons.tune_rounded,
-                iconColor: const Color(0xFF8B5CF6),
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.upload_file_rounded, color: AppColors.primary),
-                    title: const Text('Upload New Question Bank', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    subtitle: const Text('Import XLSX spreadsheets with MCQs, subjects, and topics', style: TextStyle(fontSize: 12.5)),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => context.push('/import'),
-                  ),
                   const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.library_books_rounded, color: AppColors.primary),
-                    title: const Text('Explore Question Repository', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    subtitle: const Text('Search, preview, and review indexed questions', style: TextStyle(fontSize: 12.5)),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => context.push('/bank'),
+                  _settingsTile(
+                    title: 'Live Exam Schedule',
+                    subtitle: 'Fresh question paper published every day at 09:00 AM IST',
+                    trailing: const AppBadge(
+                      text: '09:00 AM Daily',
+                      backgroundColor: AppColors.primaryLight,
+                      textColor: AppColors.primary,
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 24),
 
-              // Section: Danger Zone
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.errorLight,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.errorBorder),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              // Section 4: Admin-Only Tools & Danger Zone
+              if (auth.isAdmin) ...[
+                _buildSettingsCard(
+                  title: 'Admin Database Tools',
+                  icon: Icons.admin_panel_settings_rounded,
+                  iconColor: const Color(0xFF1E1B4B),
                   children: [
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(20, 18, 20, 10),
-                      child: Row(
-                        children: [
-                          Icon(Icons.warning_rounded, color: AppColors.error, size: 20),
-                          SizedBox(width: 8),
-                          Text(
-                            'Danger Zone',
-                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFFB91C1C)),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Divider(height: 1, color: AppColors.errorBorder),
                     ListTile(
-                      title: const Text(
-                        'Reset Entire Database',
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.error),
-                      ),
-                      subtitle: const Text(
-                        'Permanently delete all imported questions, completed tests, and analytics history',
-                        style: TextStyle(fontSize: 12.5, color: Color(0xFF991B1B)),
-                      ),
-                      trailing: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.error,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        ),
-                        onPressed: () => _confirmReset(context),
-                        child: const Text('RESET DATA', style: TextStyle(fontSize: 12)),
-                      ),
+                      leading: const Icon(Icons.upload_file_rounded, color: AppColors.primary),
+                      title: const Text('Upload New Question Bank', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      subtitle: const Text('Import XLSX spreadsheets with MCQs, subjects, and topics', style: TextStyle(fontSize: 12.5)),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => context.push('/import'),
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.cloud_upload_rounded, color: AppColors.primary),
+                      title: const Text('Publish Daily 9 AM Paper', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      subtitle: const Text('Schedule today\'s 180 questions directly to Firebase', style: TextStyle(fontSize: 12.5)),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => context.push('/publish-daily-test'),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 40),
+                const SizedBox(height: 24),
+
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.errorLight,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.errorBorder),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(20, 18, 20, 10),
+                        child: Row(
+                          children: [
+                            Icon(Icons.warning_rounded, color: AppColors.error, size: 20),
+                            SizedBox(width: 8),
+                            Text(
+                              'Danger Zone (Admin Only)',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFFB91C1C)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1, color: AppColors.errorBorder),
+                      ListTile(
+                        title: const Text(
+                          'Reset Entire Database',
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.error),
+                        ),
+                        subtitle: const Text(
+                          'Permanently delete all imported questions, completed tests, and analytics history',
+                          style: TextStyle(fontSize: 12.5, color: Color(0xFF991B1B)),
+                        ),
+                        trailing: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.error,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          ),
+                          onPressed: () => _confirmReset(context),
+                          child: const Text('RESET DATA', style: TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 40),
+              ],
             ],
           ),
         ),

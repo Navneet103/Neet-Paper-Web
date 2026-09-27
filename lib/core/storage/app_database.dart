@@ -78,6 +78,18 @@ class AppDatabase extends _$AppDatabase {
     });
   }
 
+  /// Purges local test session state (results, user answers, test questions, tests)
+  /// so that different users never share examination data on the same client.
+  /// Preserves the offline question bank (questions table).
+  Future<void> clearUserSessionData() async {
+    await transaction(() async {
+      await delete(testResults).go();
+      await delete(userAnswers).go();
+      await delete(testQuestions).go();
+      await delete(tests).go();
+    });
+  }
+
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async => await m.createAll(),

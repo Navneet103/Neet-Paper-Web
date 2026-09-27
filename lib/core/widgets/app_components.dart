@@ -369,3 +369,62 @@ class AppEmptyState extends StatelessWidget {
     );
   }
 }
+
+/// Official Brand Logo (Navneet Kanojiya - NK Monogram)
+class AppLogo extends StatelessWidget {
+  final double size;
+  final double borderRadius;
+  final bool hasGlow;
+  final bool isCircle;
+
+  const AppLogo({
+    super.key,
+    this.size = 38,
+    this.borderRadius = 10,
+    this.hasGlow = false,
+    this.isCircle = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: isCircle ? null : BorderRadius.circular(borderRadius),
+        boxShadow: hasGlow
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
+                  blurRadius: size * 0.35,
+                  offset: const Offset(0, 3),
+                ),
+              ]
+            : null,
+      ),
+      child: ClipRRect(
+        borderRadius: isCircle ? BorderRadius.circular(size / 2) : BorderRadius.circular(borderRadius),
+        child: Image.asset(
+          'assets/images/logo.png',
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(
+            color: const Color(0xFF0F172A),
+            alignment: Alignment.center,
+            child: Text(
+              'NK',
+              style: TextStyle(
+                color: const Color(0xFF38BDF8),
+                fontWeight: FontWeight.w900,
+                fontSize: size * 0.38,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

@@ -12,11 +12,29 @@ import '../../features/result/presentation/view/result_page.dart';
 import '../../features/test_history/presentation/view/test_history_page.dart';
 import '../../features/analytics/presentation/view/analytics_page.dart';
 import '../../features/settings/presentation/view/settings_page.dart';
+import '../../features/daily_test/presentation/view/daily_test_page.dart';
+import '../../features/daily_test/presentation/view/publish_daily_test_page.dart';
+import '../../features/auth/presentation/view/login_page.dart';
+import '../../features/admin/presentation/view/admin_dashboard_page.dart';
 
 class AppRouter {
   static final router = GoRouter(
     initialLocation: '/dashboard',
     routes: [
+      // Auth screen (Public, No Sidebar)
+      GoRoute(
+        path: '/login',
+        builder: (context, state) {
+          final tab = state.uri.queryParameters['tab'];
+          return LoginPage(initialTab: tab);
+        },
+      ),
+      // Admin Console (Dedicated full view)
+      GoRoute(
+        path: '/admin',
+        builder: (context, state) => const AdminDashboardPage(),
+      ),
+
       // Immersive screens (No Sidebar)
       GoRoute(
         path: '/exam/:id',
@@ -56,6 +74,14 @@ class AppRouter {
           GoRoute(
             path: '/dashboard',
             builder: (context, state) => const DashboardPage(),
+          ),
+          GoRoute(
+            path: '/daily-test',
+            builder: (context, state) => const DailyTestPage(),
+          ),
+          GoRoute(
+            path: '/publish-daily-test',
+            builder: (context, state) => const PublishDailyTestPage(),
           ),
           GoRoute(
             path: '/import',

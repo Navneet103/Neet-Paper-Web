@@ -47,7 +47,7 @@ class TestGenerationLocalDataSourceImpl implements TestGenerationLocalDataSource
   Future<List<Question>> getRandomQuestions({int count = 180, String? subject}) async {
     final query = database.select(database.questions);
     if (subject != null && subject.isNotEmpty) {
-      query.where((t) => t.subject.equals(subject));
+      query.where((t) => t.subject.collate(Collate.noCase).equals(subject));
     }
     
     // Simple random selection: get all then shuffle or use SQL RANDOM()

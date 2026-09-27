@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/auth/auth_service.dart';
 import '../../../../core/storage/app_database.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/excel_mcq_parser.dart';
 import '../../../../core/widgets/app_components.dart';
 import '../../../../injection/injection_container.dart';
 import '../view_model/test_generation_view_model.dart';
@@ -52,8 +54,22 @@ class _TestGenerationPageState extends State<TestGenerationPage> {
     final query = db.selectOnly(db.questions, distinct: true)..addColumns([db.questions.subject]);
     final result = await query.map((row) => row.read(db.questions.subject)).get();
     if (mounted) {
+      final set = <String>{};
+      for (final s in result) {
+        if (s != null && s.trim().isNotEmpty) {
+          set.add(ExcelMcqParser.normalizeSubject(s));
+        }
+      }
+      final list = set.toList();
+      list.sort((a, b) {
+        final order = {'Physics': 1, 'Chemistry': 2, 'Biology': 3, 'Botany': 4, 'Zoology': 5};
+        final oa = order[a] ?? 100;
+        final ob = order[b] ?? 100;
+        if (oa != ob) return oa.compareTo(ob);
+        return a.compareTo(b);
+      });
       setState(() {
-        _subjects = result.whereType<String>().toList();
+        _subjects = list;
       });
     }
   }
@@ -70,6 +86,72 @@ class _TestGenerationPageState extends State<TestGenerationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = sl<AuthService>();
+    if (!auth.isAdmin) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('Access Restricted'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () => context.go('/dashboard'),
+          ),
+        ),
+        body: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 480),
+            padding: const EdgeInsets.all(32),
+            margin: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.border),
+              boxShadow: AppColors.shadowSm,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                    color: AppColors.errorLight,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.admin_panel_settings_rounded, color: AppColors.error, size: 36),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Administrator Access Required',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Test paper creation and paper configuration is managed by faculty and administrators. Students can take published papers from the Daily Live Test portal.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.5),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => context.push('/daily-test'),
+                    icon: const Icon(Icons.alarm_on_rounded, size: 18),
+                    label: const Text('GO TO DAILY LIVE TESTS'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => context.go('/dashboard'),
+                  child: const Text('Back to Dashboard'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 600;
 
@@ -205,7 +287,7 @@ class _TestGenerationPageState extends State<TestGenerationPage> {
                           
                           const SizedBox(height: 20),
                           DropdownButtonFormField<String>(
-                            value: _selectedSubject,
+                            initialValue: _selectedSubject,
                             isExpanded: true,
                             decoration: const InputDecoration(
                               labelText: 'Subject Scope',
@@ -224,7 +306,7 @@ class _TestGenerationPageState extends State<TestGenerationPage> {
                             decoration: BoxDecoration(
                               color: AppColors.primaryLight,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppColors.primary.withOpacity(0.15)),
+                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.15)),
                             ),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,

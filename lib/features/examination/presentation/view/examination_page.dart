@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/auth/auth_service.dart';
 import '../../../../core/storage/app_database.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/excel_mcq_parser.dart';
 import '../../../../core/widgets/app_components.dart';
 import '../../../../injection/injection_container.dart';
 import '../view_model/examination_view_model.dart';
@@ -22,6 +24,7 @@ class ExaminationPage extends StatefulWidget {
 
 class _ExaminationPageState extends State<ExaminationPage> {
   late ExaminationViewModel _viewModel;
+  bool _isRedirecting = false;
 
   @override
   void initState() {
@@ -44,20 +47,94 @@ class _ExaminationPageState extends State<ExaminationPage> {
           );
         }
 
-        if (state.status == ExamStatus.completed) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            context.go('/result/${widget.testId}');
-          });
-          return const Scaffold(
-            backgroundColor: AppColors.background,
+        if (state.status == ExamStatus.completed || state.status == ExamStatus.submitting) {
+          if (state.status == ExamStatus.completed && !_isRedirecting) {
+            _isRedirecting = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                context.go('/result/${widget.testId}');
+              }
+            });
+          }
+          final isCompleted = state.status == ExamStatus.completed;
+
+          return Scaffold(
+            backgroundColor: const Color(0xFF0F172A),
             body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(color: AppColors.primary),
-                  SizedBox(height: 16),
-                  Text('Compiling responses and calculating score...', style: TextStyle(color: AppColors.textSecondary)),
-                ],
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 480),
+                margin: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 32,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: isCompleted ? AppColors.successLight : AppColors.primaryLight,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: isCompleted
+                            ? const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 48)
+                            : const SizedBox(
+                                width: 38,
+                                height: 38,
+                                child: CircularProgressIndicator(
+                                  color: AppColors.primary,
+                                  strokeWidth: 3.5,
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      isCompleted ? 'Examination Submitted!' : 'Submitting Examination...',
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      isCompleted
+                          ? 'Responses encrypted & verified. Opening your Official NEET Scorecard...'
+                          : 'Evaluating responses under standard NTA rules (+4 for correct, -1 for wrong)...',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.5),
+                    ),
+                    const SizedBox(height: 24),
+                    // Submission Process Checklist
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceSubtle,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        children: [
+                          _buildSubmitStep('Encrypting candidate responses', isDone: true),
+                          const SizedBox(height: 10),
+                          _buildSubmitStep('Applying NTA (+4 / -1) marking rules', isDone: true),
+                          const SizedBox(height: 10),
+                          _buildSubmitStep('Syncing scorecard to Firebase Cloud DB', isDone: true),
+                          const SizedBox(height: 10),
+                          _buildSubmitStep('Generating All India Rank & Scorecard', isDone: isCompleted, isCurrent: !isCompleted),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -127,14 +204,7 @@ class _ExaminationPageState extends State<ExaminationPage> {
       automaticallyImplyLeading: false,
       title: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: AppColors.primaryLight,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: const Icon(Icons.school_rounded, color: AppColors.primary, size: 18),
-          ),
+          const AppLogo(size: 30, borderRadius: 8),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -585,83 +655,392 @@ class _ExaminationPageState extends State<ExaminationPage> {
     );
   }
 
+  Widget _buildSubmitStep(String text, {bool isDone = false, bool isCurrent = false}) {
+    return Row(
+      children: [
+        if (isDone)
+          const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 18)
+        else if (isCurrent)
+          const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+          )
+        else
+          Icon(Icons.radio_button_unchecked_rounded, color: AppColors.textMuted.withValues(alpha: 0.5), size: 18),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: isCurrent || isDone ? FontWeight.w600 : FontWeight.w400,
+              color: isDone
+                  ? AppColors.textPrimary
+                  : (isCurrent ? AppColors.primary : AppColors.textMuted),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   void _confirmSubmit() {
-    final answered = _viewModel.state.answers.values.where((v) => v != null).length;
-    final total = _viewModel.state.questions.length;
-    final marked = _viewModel.state.markedForReview.length;
-    final unattempted = total - answered;
+    final state = _viewModel.state;
+    final questions = state.questions;
+    final total = questions.length;
+    final answered = state.answers.values.where((v) => v != null && v.isNotEmpty).length;
+    final marked = state.markedForReview.length;
+    final unattempted = (total - answered).clamp(0, total);
+
+    // Subject breakdown
+    final Map<String, List<Question>> subjectMap = {};
+    for (final q in questions) {
+      final s = ExcelMcqParser.normalizeSubject(q.subject);
+      subjectMap.putIfAbsent(s, () => []).add(q);
+    }
+
+    // Time calculations
+    final remainingSec = state.remainingSeconds;
+    final dur = Duration(seconds: remainingSec);
+    final hours = dur.inHours.toString().padLeft(2, '0');
+    final mins = (dur.inMinutes % 60).toString().padLeft(2, '0');
+    final secs = (dur.inSeconds % 60).toString().padLeft(2, '0');
+    final timeStr = "$hours:$mins:$secs";
+    final hasHighTimeLeft = remainingSec > 300;
+
+    final studentName = sl.isRegistered<AuthService>()
+        ? (sl<AuthService>().currentUser?.displayName ?? 'NEET Aspirant')
+        : 'NEET Aspirant';
+    final testName = state.test?.name ?? 'NEET UG Mock Examination';
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Wrap(
-          spacing: 10,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Icon(Icons.assignment_turned_in_rounded, color: AppColors.primary),
-            Text('Submit Test?', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-          ],
-        ),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400),
+      barrierDismissible: false,
+      builder: (dialogCtx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        clipBehavior: Clip.antiAlias,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680, maxHeight: 720),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Are you sure you want to finalize and submit? You cannot change answers after submission.',
-                style: TextStyle(fontSize: 13.5, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
+              // 1. Official NTA Header
               Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.border),
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                 ),
-                child: Column(
+                child: Row(
                   children: [
-                    _dialogStatRow('Attempted', '$answered', AppColors.success),
-                    const SizedBox(height: 8),
-                    _dialogStatRow('Review Later', '$marked', AppColors.warning),
-                    const SizedBox(height: 8),
-                    _dialogStatRow('Remaining', '$unattempted', AppColors.error),
+                    const AppLogo(size: 38, borderRadius: 10, hasGlow: true),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'NATIONAL TESTING AGENCY (NTA)',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'NEET (UG) CBT Examination Summary',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                      tooltip: 'Return to Test',
+                      onPressed: () => Navigator.pop(dialogCtx),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 2. Candidate & Timing Banner
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                color: AppColors.surfaceSubtle,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.person_rounded, size: 16, color: AppColors.primary),
+                        const SizedBox(width: 6),
+                        Text(
+                          studentName,
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.textPrimary),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '•  $testName',
+                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: hasHighTimeLeft ? AppColors.primaryLight : AppColors.errorLight,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: hasHighTimeLeft ? AppColors.primary.withValues(alpha: 0.3) : AppColors.error.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.timer_outlined,
+                            size: 14,
+                            color: hasHighTimeLeft ? AppColors.primary : AppColors.error,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '$timeStr Left',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              fontFamily: 'monospace',
+                              color: hasHighTimeLeft ? AppColors.primary : AppColors.error,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 3. Scrollable Body
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 4-Card KPI Grid
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isNarrow = constraints.maxWidth < 460;
+                          return GridView(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: isNarrow ? 2 : 4,
+                              mainAxisExtent: 68,
+                              mainAxisSpacing: 10,
+                              crossAxisSpacing: 10,
+                            ),
+                            children: [
+                              _buildKpiCard('Total MCQs', '$total', AppColors.primary, Icons.format_list_numbered_rounded),
+                              _buildKpiCard('Answered', '$answered', AppColors.success, Icons.check_circle_rounded),
+                              _buildKpiCard('Review Later', '$marked', AppColors.warning, Icons.bookmark_rounded),
+                              _buildKpiCard('Not Attempted', '$unattempted', AppColors.error, Icons.cancel_outlined),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Subject Breakdown Section
+                      const Text(
+                        'Subject-wise Response Breakdown',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(
+                          children: [
+                            // Table Header
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              decoration: const BoxDecoration(
+                                color: AppColors.surfaceSubtle,
+                                borderRadius: BorderRadius.vertical(top: Radius.circular(11)),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Expanded(flex: 3, child: Text('Subject', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary))),
+                                  Expanded(flex: 2, child: Text('Total', textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.textSecondary))),
+                                  Expanded(flex: 2, child: Text('Answered', textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.success))),
+                                  Expanded(flex: 2, child: Text('Review', textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.warning))),
+                                  Expanded(flex: 2, child: Text('Skipped', textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: AppColors.error))),
+                                ],
+                              ),
+                            ),
+                            const Divider(height: 1, color: AppColors.border),
+                            // Table Rows
+                            ...subjectMap.entries.map((entry) {
+                              final subTotal = entry.value.length;
+                              final subAnswered = entry.value.where((q) => state.answers[q.id] != null && state.answers[q.id]!.isNotEmpty).length;
+                              final subMarked = entry.value.where((q) => state.markedForReview.contains(q.id)).length;
+                              final subSkipped = (subTotal - subAnswered).clamp(0, subTotal);
+
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                decoration: const BoxDecoration(
+                                  border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 3,
+                                      child: Text(
+                                        entry.key,
+                                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.textPrimary),
+                                      ),
+                                    ),
+                                    Expanded(flex: 2, child: Text('$subTotal', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+                                    Expanded(flex: 2, child: Text('$subAnswered', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.success))),
+                                    Expanded(flex: 2, child: Text('$subMarked', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.warning))),
+                                    Expanded(flex: 2, child: Text('$subSkipped', textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.error))),
+                                  ],
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // NTA Final Disclaimer Callout
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF3C7),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFFDE68A)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.warning_amber_rounded, color: Color(0xFFB45309), size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                hasHighTimeLeft
+                                    ? 'You still have $timeStr remaining! Once submitted, your answers will be permanently locked and evaluated (+4 for correct, -1 for wrong). You cannot change them after submission.'
+                                    : 'Submitting will lock your responses and compute your final NEET score and AIR rank. This action cannot be undone.',
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF92400E), height: 1.4, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // 4. Action Buttons Footer
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border(top: BorderSide(color: AppColors.border)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                        label: const Text('Back to Test'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: const BorderSide(color: AppColors.border),
+                        ),
+                        onPressed: () => Navigator.pop(dialogCtx),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.check_circle_rounded, size: 18),
+                        label: const Text('Confirm & Final Submit'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.success,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          elevation: 2,
+                        ),
+                        onPressed: () {
+                          Navigator.pop(dialogCtx);
+                          _viewModel.submitTest();
+                        },
+                      ),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('BACK'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () {
-              Navigator.pop(context);
-              _viewModel.submitTest();
-            },
-            child: const Text('SUBMIT'),
-          ),
-        ],
       ),
     );
   }
 
-  Widget _dialogStatRow(String label, String value, Color color) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-        Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
-      ],
+  Widget _buildKpiCard(String label, String value, Color color, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: color, height: 1.1),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

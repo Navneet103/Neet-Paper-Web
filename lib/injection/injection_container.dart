@@ -43,12 +43,18 @@ import 'package:neet_paper_test/features/analytics/data/repository/analytics_rep
 import 'package:neet_paper_test/features/analytics/data/repository/analytics_repository_impl.dart';
 import 'package:neet_paper_test/features/analytics/presentation/view_model/analytics_view_model.dart';
 
+// Firebase & Auth
+import 'package:neet_paper_test/core/firebase/firebase_test_service.dart';
+import 'package:neet_paper_test/core/auth/auth_service.dart';
+
 final sl = GetIt.instance;
 
 Future<void> init() async {
   // Core
   final database = AppDatabase();
   sl.registerSingleton<AppDatabase>(database);
+  sl.registerSingleton<AuthService>(AuthService());
+  sl.registerLazySingleton<FirebaseTestService>(() => FirebaseTestService());
 
   // Question Import
   sl.registerLazySingleton<QuestionImportLocalDataSource>(() => QuestionImportLocalDataSourceImpl(database: sl()));

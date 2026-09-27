@@ -4,6 +4,7 @@ import '../../../../core/storage/app_database.dart';
 abstract class ResultLocalDataSource {
   Future<void> saveResult(TestResultsCompanion result);
   Future<TestResult?> getResult(int testId);
+  Future<Test?> getTest(int testId);
   Future<List<TypedResult>> getAnswersWithQuestions(int testId);
 }
 
@@ -20,6 +21,11 @@ class ResultLocalDataSourceImpl implements ResultLocalDataSource {
   @override
   Future<TestResult?> getResult(int testId) async {
     return await (database.select(database.testResults)..where((t) => t.testId.equals(testId))).getSingleOrNull();
+  }
+
+  @override
+  Future<Test?> getTest(int testId) async {
+    return await (database.select(database.tests)..where((t) => t.id.equals(testId))).getSingleOrNull();
   }
 
   @override

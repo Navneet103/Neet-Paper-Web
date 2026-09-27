@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "101133577530",
+    "project_id": "neet-paper-test",
+    "storage_bucket": "neet-paper-test.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:101133577530:android:5d5ca8a75a237154123403",
+        "android_client_info": {
+          "package_name": "com.example.neet_paper_test"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCl9mYw-t3C4qUm2FxUTuez4m7bDe5KP0E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

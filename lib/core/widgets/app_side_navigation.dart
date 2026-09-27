@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../injection/injection_container.dart';
+import '../auth/auth_service.dart';
 import '../theme/app_theme.dart';
+import 'app_components.dart';
 
 class AppSideNavigation extends StatelessWidget {
   final Widget child;
@@ -12,130 +15,247 @@ class AppSideNavigation extends StatelessWidget {
     required this.currentPath,
   });
 
-  static const List<_NavItem> _navItems = [
-    _NavItem(route: '/dashboard', label: 'Dashboard', icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard_rounded),
-    _NavItem(route: '/bank', label: 'Question Bank', icon: Icons.library_books_outlined, activeIcon: Icons.library_books_rounded),
-    _NavItem(route: '/import', label: 'Import Questions', icon: Icons.upload_file_outlined, activeIcon: Icons.upload_file_rounded),
-    _NavItem(route: '/create-test', label: 'Create Test', icon: Icons.add_task_outlined, activeIcon: Icons.add_task_rounded),
-    _NavItem(route: '/history', label: 'Test History', icon: Icons.history_toggle_off_rounded, activeIcon: Icons.history_rounded),
-    _NavItem(route: '/analytics', label: 'Analytics', icon: Icons.insights_outlined, activeIcon: Icons.insights_rounded),
-    _NavItem(route: '/settings', label: 'Settings', icon: Icons.settings_outlined, activeIcon: Icons.settings_rounded),
-  ];
+  List<_NavItem> _getNavItems(AuthService auth) {
+    if (auth.isAdmin) {
+      return const [
+        _NavItem(route: '/dashboard', label: 'Dashboard', mobileLabel: 'Home', icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard_rounded),
+        _NavItem(route: '/admin', label: 'Admin Console', mobileLabel: 'Admin', icon: Icons.admin_panel_settings_outlined, activeIcon: Icons.admin_panel_settings_rounded),
+        _NavItem(route: '/history', label: 'Test Submissions', mobileLabel: 'Submissions', icon: Icons.history_toggle_off_rounded, activeIcon: Icons.history_rounded),
+        _NavItem(route: '/analytics', label: 'Analytics', mobileLabel: 'Analytics', icon: Icons.insights_outlined, activeIcon: Icons.insights_rounded),
+        _NavItem(route: '/settings', label: 'Settings', mobileLabel: 'Settings', icon: Icons.settings_outlined, activeIcon: Icons.settings_rounded),
+      ];
+    }
+
+    return const [
+      _NavItem(route: '/dashboard', label: 'Dashboard', mobileLabel: 'Home', icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard_rounded),
+      _NavItem(route: '/daily-test', label: 'Daily Live Test (9 AM)', mobileLabel: 'Daily Test', icon: Icons.alarm_on_outlined, activeIcon: Icons.alarm_on_rounded),
+      _NavItem(route: '/history', label: 'Test History', mobileLabel: 'History', icon: Icons.history_toggle_off_rounded, activeIcon: Icons.history_rounded),
+      _NavItem(route: '/analytics', label: 'Analytics', mobileLabel: 'Analytics', icon: Icons.insights_outlined, activeIcon: Icons.insights_rounded),
+      _NavItem(route: '/settings', label: 'Settings', mobileLabel: 'Settings', icon: Icons.settings_outlined, activeIcon: Icons.settings_rounded),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     final bool isExam = currentPath.contains('/exam/');
     if (isExam) return child;
 
-    final width = MediaQuery.of(context).size.width;
-    final isMobile = width < 768; // Standard tablet breakpoint
-    final isCompact = width >= 768 && width < 1100;
+    final auth = sl<AuthService>();
 
-    if (isMobile) {
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(_getPageTitle(currentPath)),
-          leading: Builder(
-            builder: (context) => IconButton(
-              icon: const Icon(Icons.menu_rounded),
-              onPressed: () => Scaffold.of(context).openDrawer(),
+    return ListenableBuilder(
+      listenable: auth,
+      builder: (context, _) {
+        final navItems = _getNavItems(auth);
+        final width = MediaQuery.of(context).size.width;
+        final isMobile = width < 768; // Standard tablet breakpoint
+        final isCompact = width >= 768 && width < 1100;
+
+        if (isMobile) {
+          final selectedIndex = navItems.indexWhere((item) => currentPath.startsWith(item.route));
+          final safeIndex = selectedIndex >= 0 ? selectedIndex : 0;
+
+          return Scaffold(
+            body: child,
+            bottomNavigationBar: Container(
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                border: Border(top: BorderSide(color: AppColors.border, width: 1)),
+              ),
+              child: NavigationBar(
+                selectedIndex: safeIndex,
+                backgroundColor: Colors.transparent,
+                indicatorColor: AppColors.primaryLight,
+                elevation: 0,
+                height: 62,
+                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                onDestinationSelected: (index) {
+                  if (index >= 0 && index < navItems.length) {
+                    context.go(navItems[index].route);
+                  }
+                },
+                destinations: navItems.map((item) {
+                  return NavigationDestination(
+                    icon: Icon(item.icon, size: 22, color: AppColors.textSecondary),
+                    selectedIcon: Icon(item.activeIcon, size: 22, color: AppColors.primary),
+                    label: item.mobileLabel ?? item.label,
+                  );
+                }).toList(),
+              ),
             ),
-          ),
-        ),
-        drawer: Drawer(
-          backgroundColor: AppColors.surface,
-          child: Column(
+          );
+        }
+
+        return Scaffold(
+          body: Row(
             children: [
-              _buildBrandHeader(context, false),
-              const Divider(),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                  itemCount: _navItems.length,
-                  itemBuilder: (context, index) {
-                    final item = _navItems[index];
-                    final isSelected = currentPath.startsWith(item.route);
-                    return _buildNavItem(
-                      context: context,
-                      item: item,
-                      isSelected: isSelected,
-                      isCompact: false,
-                      onTap: () {
-                        context.go(item.route);
-                        Navigator.pop(context); // Close drawer
-                      },
+              // Sidebar
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: isCompact ? 72 : 240,
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border(right: BorderSide(color: AppColors.border, width: 1)),
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final bool effectivelyCompact = constraints.maxWidth < 160;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildBrandHeader(context, effectivelyCompact),
+                        const Divider(height: 1),
+                        if (!effectivelyCompact)
+                          _buildAuthSidebarHeader(context, auth),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: ListView.builder(
+                            padding: EdgeInsets.symmetric(horizontal: effectivelyCompact ? 5 : 10),
+                            itemCount: navItems.length,
+                            itemBuilder: (context, index) {
+                              final item = navItems[index];
+                              final isSelected = currentPath.startsWith(item.route);
+                              return _buildNavItem(
+                                context: context,
+                                item: item,
+                                isSelected: isSelected,
+                                isCompact: effectivelyCompact,
+                                onTap: () => context.go(item.route),
+                              );
+                            },
+                          ),
+                        ),
+                        if (auth.isAuthenticated && !effectivelyCompact)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () async {
+                                  await auth.signOut();
+                                  if (context.mounted) context.go('/login');
+                                },
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.errorLight,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Row(
+                                    children: [
+                                      Icon(Icons.logout_rounded, color: AppColors.error, size: 18),
+                                      SizedBox(width: 10),
+                                      Text(
+                                        'Log Out',
+                                        style: TextStyle(
+                                          color: AppColors.error,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                        else if (auth.isAuthenticated && effectivelyCompact)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Center(
+                              child: IconButton(
+                                icon: const Icon(Icons.logout_rounded, color: AppColors.error, size: 20),
+                                tooltip: 'Log Out',
+                                onPressed: () async {
+                                  await auth.signOut();
+                                  if (context.mounted) context.go('/login');
+                                },
+                              ),
+                            ),
+                          ),
+                        _buildFooter(context, effectivelyCompact),
+                      ],
                     );
                   },
                 ),
               ),
-              _buildFooter(context, false),
+              Expanded(
+                child: Container(
+                  color: AppColors.background,
+                  child: child,
+                ),
+              ),
             ],
           ),
-        ),
-        body: child,
-      );
-    }
-
-    return Scaffold(
-      body: Row(
-        children: [
-          // Sidebar
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: isCompact ? 72 : 240,
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              border: Border(right: BorderSide(color: AppColors.border, width: 1)),
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final bool effectivelyCompact = constraints.maxWidth < 160;
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildBrandHeader(context, effectivelyCompact),
-                    const Divider(height: 1),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: ListView.builder(
-                        padding: EdgeInsets.symmetric(horizontal: effectivelyCompact ? 5 : 10),
-                        itemCount: _navItems.length,
-                        itemBuilder: (context, index) {
-                          final item = _navItems[index];
-                          final isSelected = currentPath.startsWith(item.route);
-                          return _buildNavItem(
-                            context: context,
-                            item: item,
-                            isSelected: isSelected,
-                            isCompact: effectivelyCompact,
-                            onTap: () => context.go(item.route),
-                          );
-                        },
-                      ),
-                    ),
-                    _buildFooter(context, effectivelyCompact),
-                  ],
-                );
-              },
-            ),
-          ),
-          Expanded(
-            child: Container(
-              color: AppColors.background,
-              child: child,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  String _getPageTitle(String path) {
-    for (var item in _navItems) {
-      if (path.startsWith(item.route)) return item.label;
+  Widget _buildAuthSidebarHeader(BuildContext context, AuthService auth) {
+    if (auth.isAuthenticated) {
+      final user = auth.currentUser!;
+      return Container(
+        margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceSubtle,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 14,
+              backgroundColor: user.isAdmin ? const Color(0xFF1E1B4B) : AppColors.primary,
+              child: Text(
+                user.displayName.isNotEmpty ? user.displayName[0].toUpperCase() : 'U',
+                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    user.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                  ),
+                  Text(
+                    user.isAdmin ? 'Admin Console' : 'Student',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: user.isAdmin ? AppColors.error : AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout_rounded, size: 16, color: AppColors.textMuted),
+              tooltip: 'Sign Out',
+              onPressed: () => auth.signOut(),
+            ),
+          ],
+        ),
+      );
     }
-    return 'NEET Master';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+      child: ElevatedButton.icon(
+        onPressed: () => context.push('/login'),
+        icon: const Icon(Icons.login_rounded, size: 16),
+        label: const Text('Sign In', style: TextStyle(fontSize: 12)),
+        style: ElevatedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+        ),
+      ),
+    );
   }
 
   Widget _buildBrandHeader(BuildContext context, bool isCompact) {
@@ -150,26 +270,7 @@ class AppSideNavigation extends StatelessWidget {
             SizedBox(
               width: isCompact ? 71 : 38, // Reduced from 72 to 71 to account for 1px border
               child: Center(
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.primary, Color(0xFF6366F1)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(Icons.school_rounded, color: Colors.white, size: 20),
-                ),
+                child: const AppLogo(size: 38, borderRadius: 10, hasGlow: true),
               ),
             ),
             if (!isCompact) ...[
@@ -196,7 +297,7 @@ class AppSideNavigation extends StatelessWidget {
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        'Enterprise Offline',
+                        'NEET (UG) CBT Exam',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
@@ -323,7 +424,7 @@ class AppSideNavigation extends StatelessWidget {
           const SizedBox(width: 8),
           const Expanded(
             child: Text(
-              'Offline Database',
+              'NEET 2026 Ready',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -334,11 +435,11 @@ class AppSideNavigation extends StatelessWidget {
             ),
           ),
           const Text(
-            'SQLite',
+            'Online',
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w600,
-              color: AppColors.textMuted,
+              color: AppColors.success,
             ),
           ),
         ],
@@ -350,12 +451,14 @@ class AppSideNavigation extends StatelessWidget {
 class _NavItem {
   final String route;
   final String label;
+  final String? mobileLabel;
   final IconData icon;
   final IconData activeIcon;
 
   const _NavItem({
     required this.route,
     required this.label,
+    this.mobileLabel,
     required this.icon,
     required this.activeIcon,
   });

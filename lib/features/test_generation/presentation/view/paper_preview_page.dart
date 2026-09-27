@@ -88,23 +88,23 @@ class _PaperPreviewPageState extends State<PaperPreviewPage> {
               _buildInstructionsCard(isMobile),
               const SizedBox(height: 32),
 
-              // Question Preview Section
+              // Subject Distribution Section
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    isMobile ? 'Questions Sample' : 'Curated Questions Sample',
+                    isMobile ? 'Paper Structure' : 'Paper Structure & Syllabus Scope',
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.4),
                   ),
                   AppBadge(
-                    text: '${_questions.length} Qs',
+                    text: '${_questions.length} MCQs',
                     backgroundColor: AppColors.primaryLight,
                     textColor: AppColors.primary,
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              _buildQuestionList(),
+              _buildSubjectDistributionCard(isMobile),
               const SizedBox(height: 40),
 
               // Start Exam CTA
@@ -137,7 +137,7 @@ class _PaperPreviewPageState extends State<PaperPreviewPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Text(
@@ -167,7 +167,7 @@ class _PaperPreviewPageState extends State<PaperPreviewPage> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
@@ -262,58 +262,96 @@ class _PaperPreviewPageState extends State<PaperPreviewPage> {
     );
   }
 
-  Widget _buildQuestionList() {
-    final previewCount = _questions.length > 5 ? 5 : _questions.length;
+  Widget _buildSubjectDistributionCard(bool isMobile) {
+    final Map<String, int> subjectCounts = {};
+    for (final q in _questions) {
+      final s = (q.subject != null && q.subject!.trim().isNotEmpty) ? q.subject!.trim() : 'General';
+      subjectCounts[s] = (subjectCounts[s] ?? 0) + 1;
+    }
 
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: previewCount,
-      itemBuilder: (context, index) {
-        final q = _questions[index];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      padding: EdgeInsets.all(isMobile ? 18 : 24),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+        boxShadow: AppColors.shadowSm,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
             children: [
+              Icon(Icons.pie_chart_outline_rounded, color: AppColors.primary, size: 20),
+              SizedBox(width: 10),
               Text(
-                'Q${index + 1}.',
-                style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary, fontSize: 13),
+                'Subject Breakdown & Distribution',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            children: subjectCounts.entries.map((e) {
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceSubtle,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      q.questionText,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary, height: 1.4),
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: [
-                        AppBadge(text: q.subject ?? 'General', backgroundColor: AppColors.surfaceSubtle, textColor: AppColors.textSecondary),
-                        if (q.topic != null && q.topic!.isNotEmpty)
-                          AppBadge(text: q.topic!, backgroundColor: AppColors.surfaceSubtle, textColor: AppColors.textMuted),
-                      ],
+                    const SizedBox(width: 8),
+                    Text(
+                      e.key,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.textPrimary),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${e.value} MCQs',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: AppColors.primary),
+                      ),
                     ),
                   ],
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          const SizedBox(height: 14),
+          const Row(
+            children: [
+              Icon(Icons.lock_clock_rounded, size: 16, color: AppColors.textMuted),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Questions are secured and encrypted until exam initiation. The examination timer begins immediately upon clicking the button below.',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
                 ),
               ),
             ],
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -325,7 +363,7 @@ class _PaperPreviewPageState extends State<PaperPreviewPage> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
+            color: AppColors.primary.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
