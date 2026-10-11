@@ -11,11 +11,13 @@ import '../view_model/examination_view_model.dart';
 class ExaminationPage extends StatefulWidget {
   final int testId;
   final List<Question> questions;
+  final String? testDocId;
 
   const ExaminationPage({
     super.key,
     required this.testId,
     required this.questions,
+    this.testDocId,
   });
 
   @override
@@ -25,12 +27,13 @@ class ExaminationPage extends StatefulWidget {
 class _ExaminationPageState extends State<ExaminationPage> {
   late ExaminationViewModel _viewModel;
   bool _isRedirecting = false;
+  String _selectedPaletteSubject = 'ALL';
 
   @override
   void initState() {
     super.initState();
     _viewModel = sl<ExaminationViewModel>();
-    _viewModel.loadTest(widget.testId, widget.questions);
+    _viewModel.loadTest(widget.testId, widget.questions, testDocId: widget.testDocId);
   }
 
   @override
@@ -44,6 +47,82 @@ class _ExaminationPageState extends State<ExaminationPage> {
           return const Scaffold(
             backgroundColor: AppColors.background,
             body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+          );
+        }
+
+        if (state.status == ExamStatus.error) {
+          return Scaffold(
+            backgroundColor: const Color(0xFF0F172A),
+            body: Center(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 480),
+                margin: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 32,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: const BoxDecoration(
+                        color: AppColors.errorLight,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.error_outline_rounded, color: AppColors.error, size: 40),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Submission Interrupted',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      state.errorMessage ?? 'An error occurred while evaluating or syncing your test.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.5),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              _viewModel.loadTest(widget.testId, widget.questions, testDocId: widget.testDocId);
+                            },
+                            child: const Text('Back to Test'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                            label: const Text('Retry Submit'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () => _viewModel.submitTest(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
           );
         }
 
@@ -298,6 +377,29 @@ class _ExaminationPageState extends State<ExaminationPage> {
     final question = state.questions[state.currentQuestionIndex];
     final selectedOption = state.answers[question.id];
 
+    // Compute NEET UG Section Info
+    final currentSubject = ExcelMcqParser.normalizeSubject(question.subject);
+    final subjectQuestions = state.questions.where(
+      (q) => ExcelMcqParser.normalizeSubject(q.subject) == currentSubject,
+    ).toList();
+    final indexInSubject = subjectQuestions.indexOf(question);
+
+    String? sectionLabel;
+    if (subjectQuestions.length >= 45 && indexInSubject >= 0) {
+      if (indexInSubject < 35) {
+        sectionLabel = 'Sec A (Q${indexInSubject + 1}/35)';
+      } else {
+        sectionLabel = 'Sec B (Q${indexInSubject + 1 - 35}/15)';
+      }
+    } else if (state.questions.length >= 180) {
+      final modIndex = state.currentQuestionIndex % 50;
+      if (modIndex < 35) {
+        sectionLabel = 'Sec A (Mandatory)';
+      } else {
+        sectionLabel = 'Sec B (Optional 10/15)';
+      }
+    }
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -332,6 +434,25 @@ class _ExaminationPageState extends State<ExaminationPage> {
                       style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: 0.5),
                     ),
                   ),
+                  if (sectionLabel != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: sectionLabel.contains('Sec A') ? const Color(0xFFEFF6FF) : const Color(0xFFFDF2F8),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: sectionLabel.contains('Sec A') ? const Color(0xFF93C5FD) : const Color(0xFFF472B6),
+                        ),
+                      ),
+                      child: Text(
+                        sectionLabel,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: sectionLabel.contains('Sec A') ? const Color(0xFF1D4ED8) : const Color(0xFFBE185D),
+                        ),
+                      ),
+                    ),
                   AppBadge(
                     text: question.subject ?? 'General',
                     backgroundColor: AppColors.primaryLight,
@@ -505,13 +626,30 @@ class _ExaminationPageState extends State<ExaminationPage> {
     final totalCount = state.questions.length;
     final unattemptedCount = (totalCount - answeredCount).clamp(0, totalCount);
 
+    final subjects = <String>['ALL'];
+    for (final q in state.questions) {
+      final s = ExcelMcqParser.normalizeSubject(q.subject);
+      if (!subjects.contains(s)) {
+        subjects.add(s);
+      }
+    }
+
+    final List<MapEntry<int, Question>> filteredQuestions = [];
+    for (int i = 0; i < state.questions.length; i++) {
+      final q = state.questions[i];
+      final s = ExcelMcqParser.normalizeSubject(q.subject);
+      if (_selectedPaletteSubject == 'ALL' || s == _selectedPaletteSubject) {
+        filteredQuestions.add(MapEntry(i, q));
+      }
+    }
+
     return Container(
       color: AppColors.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
             decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
             ),
@@ -531,6 +669,48 @@ class _ExaminationPageState extends State<ExaminationPage> {
                     _paletteStat('$unattemptedCount', 'Rem', AppColors.textMuted),
                   ],
                 ),
+                if (subjects.length > 2) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 30,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: subjects.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 6),
+                      itemBuilder: (context, sIdx) {
+                        final sub = subjects[sIdx];
+                        final isSel = _selectedPaletteSubject == sub;
+                        return InkWell(
+                          onTap: () {
+                            setState(() {
+                              _selectedPaletteSubject = sub;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(15),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isSel ? AppColors.primary : AppColors.surfaceSubtle,
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(
+                                color: isSel ? AppColors.primary : AppColors.border,
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              sub,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: isSel ? FontWeight.w700 : FontWeight.w500,
+                                color: isSel ? Colors.white : AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -543,9 +723,12 @@ class _ExaminationPageState extends State<ExaminationPage> {
                 mainAxisSpacing: 8,
                 crossAxisSpacing: 8,
               ),
-              itemCount: state.questions.length,
-              itemBuilder: (context, index) {
-                final qId = state.questions[index].id;
+              itemCount: filteredQuestions.length,
+              itemBuilder: (context, fIdx) {
+                final entry = filteredQuestions[fIdx];
+                final index = entry.key;
+                final q = entry.value;
+                final qId = q.id;
                 final isAnswered = state.answers.containsKey(qId) && state.answers[qId] != null;
                 final isMarked = state.markedForReview.contains(qId);
                 final isCurrent = state.currentQuestionIndex == index;
@@ -607,6 +790,26 @@ class _ExaminationPageState extends State<ExaminationPage> {
                 _legendRow(AppColors.warning, 'Review Later'),
                 _legendRow(AppColors.surface, 'Not Attempted', isBordered: true),
                 _legendRow(AppColors.primary, 'Current Active', isCurrent: true),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                    label: const Text('SUBMIT TEST', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.error,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      elevation: 2,
+                    ),
+                    onPressed: () {
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      }
+                      _confirmSubmit();
+                    },
+                  ),
+                ),
               ],
             ),
           ),

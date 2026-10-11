@@ -287,7 +287,7 @@ class _TestGenerationPageState extends State<TestGenerationPage> {
                           
                           const SizedBox(height: 20),
                           DropdownButtonFormField<String>(
-                            initialValue: _selectedSubject,
+                            value: _selectedSubject,
                             isExpanded: true,
                             decoration: const InputDecoration(
                               labelText: 'Subject Scope',

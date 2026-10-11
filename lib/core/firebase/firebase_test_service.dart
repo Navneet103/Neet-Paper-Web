@@ -1,9 +1,21 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show Value, InsertMode, OrderingTerm, innerJoin;
 import '../storage/app_database.dart';
 import '../time/ist_clock.dart';
 import '../utils/excel_mcq_parser.dart';
+
+class LocalExamSession {
+  final int testId;
+  final List<Question> questions;
+  final String? testDocId;
+
+  const LocalExamSession({
+    required this.testId,
+    required this.questions,
+    this.testDocId,
+  });
+}
 
 class FirebaseQuestion {
   final int id;
@@ -188,6 +200,7 @@ class FirebaseDailyTest {
 class TestSubmission {
   final String id;
   final String testId;
+  final String? testDocId;
   final String studentName;
   final String? studentUid;
   final String? studentEmail;
@@ -204,6 +217,7 @@ class TestSubmission {
   TestSubmission({
     required this.id,
     required this.testId,
+    this.testDocId,
     required this.studentName,
     this.studentUid,
     this.studentEmail,
@@ -222,6 +236,7 @@ class TestSubmission {
     return {
       'id': id,
       'testId': testId,
+      if (testDocId != null) 'testDocId': testDocId,
       'studentName': studentName,
       'studentUid': studentUid,
       'studentEmail': studentEmail,
@@ -242,6 +257,7 @@ class TestSubmission {
     return TestSubmission(
       id: doc.id,
       testId: data['testId'] ?? '',
+      testDocId: data['testDocId'] as String?,
       studentName: data['studentName'] ?? 'Anonymous Student',
       studentUid: data['studentUid'],
       studentEmail: data['studentEmail'],
@@ -435,37 +451,64 @@ class FirebaseTestService {
     await _dailyTestsCol.doc(testId).delete();
   }
 
-  /// Submit student's result to Firestore
+  final List<TestSubmission> _pendingSubmissions = [];
+
+  /// Submit student's result to Firestore with offline retry queue
   Future<void> submitResult(TestSubmission submission) async {
     try {
-      await _submissionsCol.doc(submission.id).set(submission.toMap());
+      await _submissionsCol.doc(submission.id).set(submission.toMap(), SetOptions(merge: true));
+      _pendingSubmissions.removeWhere((s) => s.id == submission.id);
       debugPrint(
           "Submitted test result to Firestore for student: ${submission.studentName}");
     } catch (e) {
-      debugPrint("Error uploading submission to Firestore: $e");
+      debugPrint("Error uploading submission to Firestore: $e. Added to offline retry queue.");
+      if (!_pendingSubmissions.any((s) => s.id == submission.id)) {
+        _pendingSubmissions.add(submission);
+      }
+      rethrow;
+    }
+  }
+
+  /// Retries syncing any offline queued test submissions to Firestore
+  Future<void> flushPendingSubmissions() async {
+    if (_pendingSubmissions.isEmpty) return;
+    final toRetry = List<TestSubmission>.from(_pendingSubmissions);
+    for (final sub in toRetry) {
+      try {
+        await _submissionsCol.doc(sub.id).set(sub.toMap(), SetOptions(merge: true));
+        _pendingSubmissions.removeWhere((s) => s.id == sub.id);
+        debugPrint("Successfully flushed offline submission ${sub.id} to Firestore.");
+      } catch (e) {
+        debugPrint("Failed to flush offline submission ${sub.id}: $e");
+      }
     }
   }
 
   /// Stream live leaderboard for a test
   Stream<List<TestSubmission>> streamLeaderboard(String testId) {
-    return _submissionsCol
-        .where('testId', isEqualTo: testId)
-        .orderBy('score', descending: true)
-        .limit(50)
-        .snapshots()
-        .map(
-            (snap) => snap.docs.map((d) => TestSubmission.fromDoc(d)).toList());
+    return _submissionsCol.snapshots().map((snap) {
+      final list = snap.docs
+          .map((d) => TestSubmission.fromDoc(d))
+          .where((d) => d.testId == testId || d.testDocId == testId)
+          .toList();
+      list.sort((a, b) => b.score.compareTo(a.score));
+      return list.take(50).toList();
+    });
   }
 
   /// Stream all submissions (for Admin panel)
   Stream<List<TestSubmission>> streamAllSubmissions({String? testId}) {
-    Query query =
-        _submissionsCol.orderBy('submittedAt', descending: true).limit(100);
-    if (testId != null && testId.isNotEmpty) {
-      query = query.where('testId', isEqualTo: testId);
-    }
-    return query.snapshots().map(
-        (snap) => snap.docs.map((d) => TestSubmission.fromDoc(d)).toList());
+    return _submissionsCol
+        .orderBy('submittedAt', descending: true)
+        .limit(100)
+        .snapshots()
+        .map((snap) {
+      var list = snap.docs.map((d) => TestSubmission.fromDoc(d)).toList();
+      if (testId != null && testId.isNotEmpty) {
+        list = list.where((d) => d.testId == testId || d.testDocId == testId).toList();
+      }
+      return list;
+    });
   }
 
   /// Stream submissions for a specific student (strictly isolated by student UID or email)
@@ -514,33 +557,52 @@ class FirebaseTestService {
   }
 
   /// Convert a FirebaseDailyTest into local Drift DB Test and Questions so examination engine can run
-  Future<int> prepareLocalSessionForDailyTest(
+  Future<LocalExamSession> prepareLocalSessionForDailyTest(
       FirebaseDailyTest firebaseTest, AppDatabase db) async {
-    // Purge any stale completed local test session with this title so a student never inherits a completed result
-    final existingTests = await (db.select(db.tests)
-          ..where((t) => t.name.equals(firebaseTest.title)))
-        .get();
-    for (final oldTest in existingTests) {
-      if (oldTest.status == 'completed') {
-        await (db.delete(db.testResults)..where((r) => r.testId.equals(oldTest.id))).go();
-        await (db.delete(db.userAnswers)..where((a) => a.testId.equals(oldTest.id))).go();
-        await (db.delete(db.testQuestions)..where((q) => q.testId.equals(oldTest.id))).go();
-        await (db.delete(db.tests)..where((t) => t.id.equals(oldTest.id))).go();
-      } else {
-        // Active ongoing or pending attempt for this paper
-        return oldTest.id;
+    return await db.transaction(() async {
+      // 1. Check for any existing local test attempt for this exam title
+      final existingTests = await (db.select(db.tests)
+            ..where((t) => t.name.equals(firebaseTest.title)))
+          .get();
+
+      for (final oldTest in existingTests) {
+        if (oldTest.status == 'completed') {
+          // Purge completed local test session so user can start fresh
+          await (db.delete(db.testResults)..where((r) => r.testId.equals(oldTest.id))).go();
+          await (db.delete(db.userAnswers)..where((a) => a.testId.equals(oldTest.id))).go();
+          await (db.delete(db.testQuestions)..where((q) => q.testId.equals(oldTest.id))).go();
+          await (db.delete(db.tests)..where((t) => t.id.equals(oldTest.id))).go();
+        } else {
+          // Active ongoing or pending attempt for this paper
+          // Fetch the questions already linked to this test
+          final qQuery = db.select(db.questions).join([
+            innerJoin(db.testQuestions, db.testQuestions.questionId.equalsExp(db.questions.id)),
+          ])
+            ..where(db.testQuestions.testId.equals(oldTest.id))
+            ..orderBy([OrderingTerm.asc(db.testQuestions.orderIndex)]);
+
+          final rows = await qQuery.get();
+          final linkedQuestions = rows.map((r) => r.readTable(db.questions)).toList();
+
+          // If linked questions exist, return this existing session
+          if (linkedQuestions.isNotEmpty) {
+            return LocalExamSession(
+              testId: oldTest.id,
+              questions: linkedQuestions,
+              testDocId: firebaseTest.id,
+            );
+          }
+
+          // Otherwise, it was an incomplete/corrupted attempt - purge it and recreate
+          await (db.delete(db.testQuestions)..where((q) => q.testId.equals(oldTest.id))).go();
+          await (db.delete(db.userAnswers)..where((a) => a.testId.equals(oldTest.id))).go();
+          await (db.delete(db.tests)..where((t) => t.id.equals(oldTest.id))).go();
+        }
       }
-    }
 
-    final List<int> questionIds = [];
-    for (var fq in firebaseTest.questions) {
-      final existingQ = await (db.select(db.questions)
-            ..where((tbl) => tbl.questionText.equals(fq.questionText)))
-          .getSingleOrNull();
-
-      if (existingQ != null) {
-        questionIds.add(existingQ.id);
-      } else {
+      // 2. Insert questions for this exam
+      final List<int> questionIds = [];
+      for (final fq in firebaseTest.questions) {
         final insertedId = await db.into(db.questions).insert(
               QuestionsCompanion.insert(
                 questionText: fq.questionText,
@@ -551,37 +613,57 @@ class FirebaseTestService {
                 correctAnswer: fq.correctAnswer,
                 marks: fq.marks,
                 negativeMarks: driftValue(fq.negativeMarks),
-                subject:
-                    driftValue(ExcelMcqParser.normalizeSubject(fq.subject)),
+                subject: driftValue(ExcelMcqParser.normalizeSubject(fq.subject)),
                 topic: driftValue(fq.topic),
               ),
+              mode: InsertMode.insertOrReplace,
             );
         questionIds.add(insertedId);
       }
-    }
 
-    final newTestId = await db.into(db.tests).insert(
-          TestsCompanion.insert(
-            name: firebaseTest.title,
-            totalQuestions: firebaseTest.totalQuestions,
-            totalMarks: firebaseTest.totalMarks,
-            durationMinutes: firebaseTest.durationMinutes,
-            positiveMarking: firebaseTest.positiveMarks,
-            negativeMarking: firebaseTest.negativeMarks,
-          ),
-        );
-
-    for (int i = 0; i < questionIds.length; i++) {
-      await db.into(db.testQuestions).insert(
-            TestQuestionsCompanion.insert(
-              testId: newTestId,
-              questionId: questionIds[i],
-              orderIndex: i,
+      // 3. Create the test session
+      final newTestId = await db.into(db.tests).insert(
+            TestsCompanion.insert(
+              name: firebaseTest.title,
+              totalQuestions: firebaseTest.totalQuestions,
+              totalMarks: firebaseTest.totalMarks,
+              durationMinutes: firebaseTest.durationMinutes,
+              positiveMarking: firebaseTest.positiveMarks,
+              negativeMarking: firebaseTest.negativeMarks,
             ),
           );
-    }
 
-    return newTestId;
+      // 4. Batch insert TestQuestions entries
+      final testQuestionEntries = <TestQuestionsCompanion>[];
+      for (int i = 0; i < questionIds.length; i++) {
+        testQuestionEntries.add(
+          TestQuestionsCompanion.insert(
+            testId: newTestId,
+            questionId: questionIds[i],
+            orderIndex: i,
+          ),
+        );
+      }
+      await db.batch((batch) {
+        batch.insertAll(db.testQuestions, testQuestionEntries);
+      });
+
+      // 5. Query and return the exact Question objects with their true DB IDs
+      final qQuery = db.select(db.questions).join([
+        innerJoin(db.testQuestions, db.testQuestions.questionId.equalsExp(db.questions.id)),
+      ])
+        ..where(db.testQuestions.testId.equals(newTestId))
+        ..orderBy([OrderingTerm.asc(db.testQuestions.orderIndex)]);
+
+      final rows = await qQuery.get();
+      final finalQuestions = rows.map((r) => r.readTable(db.questions)).toList();
+
+      return LocalExamSession(
+        testId: newTestId,
+        questions: finalQuestions,
+        testDocId: firebaseTest.id,
+      );
+    });
   }
 
   Value<T> driftValue<T>(T value) => Value(value);

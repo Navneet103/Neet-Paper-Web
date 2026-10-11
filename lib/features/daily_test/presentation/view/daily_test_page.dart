@@ -29,6 +29,7 @@ class _DailyTestPageState extends State<DailyTestPage> {
   @override
   void initState() {
     super.initState();
+    _service.flushPendingSubmissions();
     _todayTestStream = _service.streamTodayTest();
     _recentTestsStream = _service.streamRecentTests();
 
@@ -40,53 +41,59 @@ class _DailyTestPageState extends State<DailyTestPage> {
   }
 
   Future<void> _startExam(FirebaseDailyTest test) async {
-    // 1. Check Authentication
-    if (!_auth.isAuthenticated) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please log in with your Student account to start the examination.'),
-          backgroundColor: AppColors.primary,
-        ),
-      );
-      context.push('/login');
-      return;
-    }
-
-    // 2. Timing Gate: verify test is not upcoming
-    if (test.isUpcoming && !kDebugMode) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('This exam is scheduled for 09:00 AM IST. Portal will unlock automatically.'),
-          backgroundColor: AppColors.info,
-        ),
-      );
-      return;
-    }
-
-    // 3. Prevent duplicate attempts
-    final hasAttemptedTitle = await _auth.hasStudentAttempted(test.title);
-    final hasAttemptedId = await _auth.hasStudentAttempted(test.id);
-    if (hasAttemptedTitle || hasAttemptedId) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You have already submitted this exam. Please tap "View Scorecard" to review your results.'),
-          backgroundColor: AppColors.info,
-        ),
-      );
-      return;
-    }
-
+    if (_isLaunching) return;
     setState(() => _isLaunching = true);
 
     try {
-      final testId = await _service.prepareLocalSessionForDailyTest(test, _db);
-      final driftQuestions = test.questions.map((q) => q.toDriftQuestion()).toList();
+      // 1. Check Authentication
+      if (!_auth.isAuthenticated) {
+        if (mounted) setState(() => _isLaunching = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please log in with your Student account to start the examination.'),
+            backgroundColor: AppColors.primary,
+          ),
+        );
+        context.push('/login');
+        return;
+      }
+
+      // 2. Timing Gate: verify test is not upcoming
+      if (test.isUpcoming && !kDebugMode) {
+        if (mounted) setState(() => _isLaunching = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This exam is scheduled for 09:00 AM IST. Portal will unlock automatically.'),
+            backgroundColor: AppColors.info,
+          ),
+        );
+        return;
+      }
+
+      // 3. Prevent duplicate attempts
+      final hasAttemptedTitle = await _auth.hasStudentAttempted(test.title);
+      final hasAttemptedId = await _auth.hasStudentAttempted(test.id);
+      if (hasAttemptedTitle || hasAttemptedId) {
+        if (!mounted) return;
+        setState(() => _isLaunching = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You have already submitted this exam. Please tap "View Scorecard" to review your results.'),
+            backgroundColor: AppColors.info,
+          ),
+        );
+        return;
+      }
+
+      final session = await _service.prepareLocalSessionForDailyTest(test, _db);
 
       if (!mounted) return;
       setState(() => _isLaunching = false);
 
-      context.push('/exam/$testId', extra: driftQuestions);
+      context.push('/exam/${session.testId}', extra: {
+        'questions': session.questions,
+        'testDocId': session.testDocId,
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLaunching = false);
@@ -342,7 +349,11 @@ class _DailyTestPageState extends State<DailyTestPage> {
 
     // Strict check: has the current student submitted this test?
     final mySub = mySubmissions
-        .where((s) => s.testId == test.title || s.testId == test.id)
+        .where((s) =>
+            s.testId == test.title ||
+            s.testId == test.id ||
+            s.testDocId == test.id ||
+            s.testDocId == test.title)
         .firstOrNull;
     final hasSubmitted = mySub != null;
 
@@ -745,7 +756,11 @@ class _DailyTestPageState extends State<DailyTestPage> {
             final isCurrent = t.id == currentTestId;
 
             final mySub = mySubmissions
-                .where((s) => s.testId == t.title || s.testId == t.id)
+                .where((s) =>
+                    s.testId == t.title ||
+                    s.testId == t.id ||
+                    s.testDocId == t.id ||
+                    s.testDocId == t.title)
                 .firstOrNull;
             final hasSubmitted = mySub != null;
 
@@ -838,7 +853,7 @@ class _DailyTestPageState extends State<DailyTestPage> {
                                   ),
                                 )
                               : ElevatedButton(
-                                  onPressed: () => _startExam(t),
+                                  onPressed: _isLaunching ? null : () => _startExam(t),
                                   style: ElevatedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
                                   ),
@@ -922,7 +937,7 @@ class _DailyTestPageState extends State<DailyTestPage> {
                           )
                         else
                           ElevatedButton(
-                            onPressed: () => _startExam(t),
+                            onPressed: _isLaunching ? null : () => _startExam(t),
                             style: ElevatedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                               minimumSize: Size.zero,

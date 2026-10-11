@@ -15,7 +15,17 @@ class ResultLocalDataSourceImpl implements ResultLocalDataSource {
 
   @override
   Future<void> saveResult(TestResultsCompanion result) async {
-    await database.into(database.testResults).insertOnConflictUpdate(result);
+    final existing = await (database.select(database.testResults)
+          ..where((r) => r.testId.equals(result.testId.value)))
+        .getSingleOrNull();
+
+    if (existing != null) {
+      await (database.update(database.testResults)
+            ..where((r) => r.id.equals(existing.id)))
+          .write(result);
+    } else {
+      await database.into(database.testResults).insert(result);
+    }
   }
 
   @override

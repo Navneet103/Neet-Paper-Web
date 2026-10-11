@@ -27,7 +27,19 @@ class ExaminationLocalDataSourceImpl implements ExaminationLocalDataSource {
 
   @override
   Future<void> saveAnswer(UserAnswersCompanion answer) async {
-    await database.into(database.userAnswers).insertOnConflictUpdate(answer);
+    final existing = await (database.select(database.userAnswers)
+          ..where((u) =>
+              u.testId.equals(answer.testId.value) &
+              u.questionId.equals(answer.questionId.value)))
+        .getSingleOrNull();
+
+    if (existing != null) {
+      await (database.update(database.userAnswers)
+            ..where((u) => u.id.equals(existing.id)))
+          .write(answer);
+    } else {
+      await database.into(database.userAnswers).insert(answer);
+    }
   }
 
   @override

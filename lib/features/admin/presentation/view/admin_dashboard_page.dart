@@ -37,6 +37,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
   @override
   void initState() {
     super.initState();
+    _firebaseService.flushPendingSubmissions();
     _tabController = TabController(length: 4, vsync: this);
     _recentTestsStream = _firebaseService.streamRecentTests();
     _submissionsStream = _firebaseService.streamAllSubmissions();
@@ -868,7 +869,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                         if (isMobile) ...[
                           DropdownButtonFormField<String>(
                             key: ValueKey(currentTest.id),
-                            initialValue: currentTest.id,
+                            value: currentTest.id,
                             decoration: const InputDecoration(
                               labelText: 'Select Paper to Edit Questions',
                               prefixIcon: Icon(Icons.assignment_outlined),
@@ -880,7 +881,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                             onChanged: (id) {
                               if (id != null) {
                                 setState(() {
-                                  _selectedTestForQuestions = tests.firstWhere((t) => t.id == id);
+                                  _selectedTestForQuestions = tests.firstWhere((t) => t.id == id, orElse: () => tests.first);
                                   _questionPage = 0;
                                 });
                               }
@@ -902,7 +903,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                               Expanded(
                                 child: DropdownButtonFormField<String>(
                                   key: ValueKey(currentTest.id),
-                                  initialValue: currentTest.id,
+                                  value: currentTest.id,
                                   decoration: const InputDecoration(
                                     labelText: 'Select Paper to Edit Questions',
                                     prefixIcon: Icon(Icons.assignment_outlined),
@@ -914,7 +915,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                                   onChanged: (id) {
                                     if (id != null) {
                                       setState(() {
-                                        _selectedTestForQuestions = tests.firstWhere((t) => t.id == id);
+                                        _selectedTestForQuestions = tests.firstWhere((t) => t.id == id, orElse: () => tests.first);
                                         _questionPage = 0;
                                       });
                                     }
@@ -1182,7 +1183,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                 final query = _submissionSearchQuery.toLowerCase();
                 return sub.studentName.toLowerCase().contains(query) ||
                     (sub.studentEmail?.toLowerCase().contains(query) ?? false) ||
-                    sub.testId.toLowerCase().contains(query);
+                    sub.testId.toLowerCase().contains(query) ||
+                    (sub.testDocId?.toLowerCase().contains(query) ?? false);
               }).toList();
 
         return SingleChildScrollView(
@@ -1836,7 +1838,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            initialValue: key,
+                            value: key,
                             decoration: const InputDecoration(labelText: 'Correct Key'),
                             items: ['A', 'B', 'C', 'D'].map((o) => DropdownMenuItem(value: o, child: Text('Option $o'))).toList(),
                             onChanged: (v) => setDlgState(() => key = v!),
@@ -1845,7 +1847,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                         const SizedBox(width: 12),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            initialValue: subject,
+                            value: subject,
                             decoration: const InputDecoration(labelText: 'Subject'),
                             items: ['Physics', 'Chemistry', 'Biology', 'Botany', 'Zoology', 'General'].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
                             onChanged: (v) => setDlgState(() => subject = v!),
@@ -1947,7 +1949,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            initialValue: key,
+                            value: key,
                             decoration: const InputDecoration(labelText: 'Correct Key'),
                             items: ['A', 'B', 'C', 'D'].map((o) => DropdownMenuItem(value: o, child: Text('Option $o'))).toList(),
                             onChanged: (v) => setDlgState(() => key = v!),
@@ -1956,7 +1958,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> with SingleTick
                         const SizedBox(width: 12),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            initialValue: ['Physics', 'Chemistry', 'Biology', 'Botany', 'Zoology', 'General'].contains(subject) ? subject : 'General',
+                            value: ['Physics', 'Chemistry', 'Biology', 'Botany', 'Zoology', 'General'].contains(subject) ? subject : 'General',
                             decoration: const InputDecoration(labelText: 'Subject'),
                             items: ['Physics', 'Chemistry', 'Biology', 'Botany', 'Zoology', 'General'].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
                             onChanged: (v) => setDlgState(() => subject = v!),

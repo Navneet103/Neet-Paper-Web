@@ -23,9 +23,7 @@ class $QuestionsTable extends Questions
   @override
   late final GeneratedColumn<String> questionText = GeneratedColumn<String>(
       'question_text', aliasedName, false,
-      type: DriftSqlType.string,
-      requiredDuringInsert: true,
-      $customConstraints: 'UNIQUE');
+      type: DriftSqlType.string, requiredDuringInsert: true);
   static const VerificationMeta _optionAMeta =
       const VerificationMeta('optionA');
   @override

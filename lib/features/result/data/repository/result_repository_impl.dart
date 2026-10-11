@@ -1,4 +1,6 @@
 import 'package:drift/drift.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../../../../core/storage/app_database.dart';
 import '../../../../core/firebase/firebase_test_service.dart';
 import '../../../../core/auth/auth_service.dart';
@@ -12,7 +14,7 @@ class ResultRepositoryImpl implements ResultRepository {
   ResultRepositoryImpl({required this.localDataSource});
 
   @override
-  Future<TestResult> calculateAndSaveResult(int testId) async {
+  Future<TestResult> calculateAndSaveResult(int testId, {String? testDocId}) async {
     final db = sl<AppDatabase>();
     
     // 1. Fetch Test configuration for marking rules
@@ -47,6 +49,7 @@ class ResultRepositoryImpl implements ResultRepository {
     if (test.startedAt != null) {
       final endTime = test.completedAt ?? DateTime.now();
       timeTaken = endTime.difference(test.startedAt!).inSeconds;
+      if (timeTaken < 0) timeTaken = 0;
     }
     
     final resultCompanion = TestResultsCompanion(
@@ -64,24 +67,55 @@ class ResultRepositoryImpl implements ResultRepository {
     // 3. Sync to Firebase Cloud DB (test_submissions collection)
     try {
       final unattempted = test.totalQuestions - attempted;
-      final auth = sl<AuthService>();
-      final currentUser = auth.currentUser;
+      final auth = sl.isRegistered<AuthService>() ? sl<AuthService>() : null;
+      final currentUser = auth?.currentUser;
+      final fbUser = FirebaseAuth.instance.currentUser;
+
+      final resolvedUid = currentUser?.uid ?? fbUser?.uid;
+      final resolvedEmail = currentUser?.email ?? fbUser?.email;
+      String resolvedName = 'Aspirant';
+      if (currentUser?.displayName != null && currentUser!.displayName.isNotEmpty) {
+        resolvedName = currentUser.displayName;
+      } else if (fbUser?.displayName != null && fbUser!.displayName!.isNotEmpty) {
+        resolvedName = fbUser.displayName!;
+      } else if (resolvedEmail != null && resolvedEmail.contains('@')) {
+        resolvedName = resolvedEmail.split('@').first;
+      }
 
       final Map<String, String> answersMap = {};
       for (final row in data) {
+        final tq = row.readTable(db.testQuestions);
         final q = row.readTable(db.questions);
         final a = row.readTableOrNull(db.userAnswers);
         if (a?.selectedOption != null && a!.selectedOption!.isNotEmpty) {
-          answersMap[q.id.toString()] = a.selectedOption!;
+          final chosenOpt = a.selectedOption!;
+          // Map by 1-indexed question number, 0-indexed question index, and SQLite ID
+          // to ensure review dialogs and admin panels on any device can read the answer accurately.
+          answersMap['${tq.orderIndex + 1}'] = chosenOpt;
+          answersMap['${tq.orderIndex}'] = chosenOpt;
+          answersMap[q.id.toString()] = chosenOpt;
         }
       }
 
+      final submissionId = resolvedUid != null
+          ? '${resolvedUid}_${testId}_${DateTime.now().millisecondsSinceEpoch}'
+          : '${testId}_${DateTime.now().millisecondsSinceEpoch}';
+
+      String? resolvedDocId = testDocId;
+      if (resolvedDocId == null || resolvedDocId.isEmpty) {
+        try {
+          final cloudTest = await sl<FirebaseTestService>().findTestByIdOrTitle(test.name);
+          resolvedDocId = cloudTest?.id;
+        } catch (_) {}
+      }
+
       final submission = TestSubmission(
-        id: '${testId}_${DateTime.now().millisecondsSinceEpoch}',
+        id: submissionId,
         testId: test.name,
-        studentName: currentUser?.displayName ?? 'Aspirant',
-        studentUid: currentUser?.uid,
-        studentEmail: currentUser?.email,
+        testDocId: resolvedDocId,
+        studentName: resolvedName,
+        studentUid: resolvedUid,
+        studentEmail: resolvedEmail,
         score: score,
         totalMarks: test.totalMarks,
         correctCount: correct,
@@ -92,9 +126,13 @@ class ResultRepositoryImpl implements ResultRepository {
         submittedAt: DateTime.now(),
         answers: answersMap,
       );
-      sl<FirebaseTestService>().submitResult(submission);
-    } catch (_) {
-      // Cloud sync failure will not disrupt student's local result display
+
+      if (sl.isRegistered<FirebaseTestService>()) {
+        await sl<FirebaseTestService>().submitResult(submission);
+        debugPrint("Successfully saved & synced test submission $submissionId to Firebase Firestore");
+      }
+    } catch (e, stack) {
+      debugPrint("Warning: Cloud submission sync encountered error: $e\n$stack");
     }
 
     return (await localDataSource.getResult(testId))!;

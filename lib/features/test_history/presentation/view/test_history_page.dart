@@ -20,6 +20,12 @@ class _TestHistoryPageState extends State<TestHistoryPage> {
   final _service = sl<FirebaseTestService>();
   String _searchQuery = '';
 
+  @override
+  void initState() {
+    super.initState();
+    _service.flushPendingSubmissions();
+  }
+
   String _formatDate(DateTime d) {
     return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} at ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
@@ -71,7 +77,8 @@ class _TestHistoryPageState extends State<TestHistoryPage> {
                 final query = _searchQuery.toLowerCase();
                 return sub.studentName.toLowerCase().contains(query) ||
                     (sub.studentEmail?.toLowerCase().contains(query) ?? false) ||
-                    sub.testId.toLowerCase().contains(query);
+                    sub.testId.toLowerCase().contains(query) ||
+                    (sub.testDocId?.toLowerCase().contains(query) ?? false);
               }).toList();
 
         return SingleChildScrollView(

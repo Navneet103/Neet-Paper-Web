@@ -1,5 +1,7 @@
 class IstClock {
-  static DateTime now() => DateTime.now();
+  /// Returns current Indian Standard Time (IST, UTC+05:30)
+  static DateTime now() =>
+      DateTime.now().toUtc().add(const Duration(hours: 5, minutes: 30));
 
   static String dateKey([DateTime? date]) {
     final d = date ?? now();

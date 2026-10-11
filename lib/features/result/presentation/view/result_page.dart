@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/auth/auth_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/excel_mcq_parser.dart';
+import '../../../../core/utils/platform_print.dart';
 import '../../../../core/widgets/app_components.dart';
 import '../../../../injection/injection_container.dart';
 import '../view_model/result_view_model.dart';
@@ -43,6 +44,11 @@ class _ResultPageState extends State<ResultPage> {
           onPressed: () => context.go('/dashboard'),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.print_rounded),
+            tooltip: 'Print Scorecard / Save PDF',
+            onPressed: () => triggerPlatformPrint(),
+          ),
           IconButton(
             icon: const Icon(Icons.share_outlined),
             tooltip: 'Copy Scorecard Summary',
@@ -719,6 +725,14 @@ class _ResultPageState extends State<ResultPage> {
             onPressed: () => context.push('/daily-test'),
             icon: const Icon(Icons.today_rounded, size: 18),
             label: const Text('Daily Live Test'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            ),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => triggerPlatformPrint(),
+            icon: const Icon(Icons.print_rounded, size: 18),
+            label: const Text('Print / PDF'),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             ),

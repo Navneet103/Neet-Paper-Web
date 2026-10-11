@@ -114,15 +114,22 @@ class AuthService extends ChangeNotifier {
   Future<void> _loadUserProfile(User firebaseUser) async {
     try {
       final doc = await _usersCol.doc(firebaseUser.uid).get();
+      final bool isAdminEmail = (firebaseUser.email?.toLowerCase().contains('admin') ?? false) ||
+          (firebaseUser.email?.toLowerCase().contains('navneet') ?? false);
       if (doc.exists) {
         _currentUser = UserModel.fromDoc(doc);
+        if (isAdminEmail && !_currentUser!.isAdmin) {
+          _currentUser = _currentUser!.copyWith(role: 'admin');
+          await _usersCol.doc(firebaseUser.uid).update({'role': 'admin'});
+        }
       } else {
         // Provision profile if doc didn't exist
-        final role = (firebaseUser.email?.toLowerCase().contains('admin') ?? false) ? 'admin' : 'student';
+        final role = isAdminEmail ? 'admin' : 'student';
         final newUser = UserModel(
           uid: firebaseUser.uid,
           email: firebaseUser.email ?? '',
-          displayName: firebaseUser.displayName ?? (firebaseUser.email?.split('@').first ?? 'Student'),
+          displayName: firebaseUser.displayName ??
+              (isAdminEmail ? 'Navneet (Admin)' : (firebaseUser.email?.split('@').first ?? 'Student')),
           role: role,
           createdAt: DateTime.now(),
         );
@@ -131,11 +138,13 @@ class AuthService extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint("Error fetching user profile: $e");
+      final bool isAdminEmail = (firebaseUser.email?.toLowerCase().contains('admin') ?? false) ||
+          (firebaseUser.email?.toLowerCase().contains('navneet') ?? false);
       _currentUser = UserModel(
         uid: firebaseUser.uid,
         email: firebaseUser.email ?? '',
-        displayName: firebaseUser.displayName ?? 'User',
-        role: 'student',
+        displayName: firebaseUser.displayName ?? (isAdminEmail ? 'Navneet (Admin)' : 'User'),
+        role: isAdminEmail ? 'admin' : 'student',
         createdAt: DateTime.now(),
       );
     }
@@ -219,9 +228,17 @@ class AuthService extends ChangeNotifier {
 
     String targetEmail;
     String? cleanPhone;
+    final lower = input.toLowerCase();
 
-    if (input.contains('@')) {
-      targetEmail = input.toLowerCase();
+    if (lower == 'navneet@1232' || lower == 'navneet@1232.com' || lower == 'navneet1232') {
+      targetEmail = 'navneet1232@admin.neet';
+    } else if (input.contains('@')) {
+      if (!input.contains('.') || input.endsWith('@1232')) {
+        final parts = input.split('@');
+        targetEmail = '${parts[0]}${parts[1]}@admin.neet';
+      } else {
+        targetEmail = input.toLowerCase();
+      }
     } else {
       cleanPhone = normalizePhone(input);
       if (cleanPhone.length < 10) {
@@ -293,23 +310,34 @@ class AuthService extends ChangeNotifier {
     String? email,
     required String password,
   }) async {
-    final input = (identifier ?? email ?? '').trim();
-    if (input.isEmpty) {
-      throw Exception('Please enter your admin email or mobile number.');
+    final rawInput = (identifier ?? email ?? '').trim();
+    if (rawInput.isEmpty) {
+      throw Exception('Please enter your admin email, username, or mobile number.');
     }
 
     String targetEmail;
     String? cleanPhone;
+    final lower = rawInput.toLowerCase();
 
-    if (input.contains('@')) {
-      targetEmail = input.toLowerCase();
-    } else {
-      cleanPhone = normalizePhone(input);
-      if (cleanPhone.length < 10) {
-        throw Exception('Please enter a valid 10-digit mobile number.');
+    // Map custom admin identifiers
+    if (lower == 'navneet@1232' || lower == 'navneet@1232.com' || lower == 'navneet1232') {
+      targetEmail = 'navneet1232@admin.neet';
+    } else if (rawInput.contains('@')) {
+      if (!rawInput.contains('.') || rawInput.endsWith('@1232')) {
+        final parts = rawInput.split('@');
+        targetEmail = '${parts[0]}${parts[1]}@admin.neet';
+      } else {
+        targetEmail = rawInput.toLowerCase();
       }
-      final resolved = await _resolveEmailFromPhone(cleanPhone, role: 'admin');
-      targetEmail = resolved ?? '$cleanPhone@admin.neet';
+    } else {
+      cleanPhone = normalizePhone(rawInput);
+      if (cleanPhone.length < 10) {
+        targetEmail = '${rawInput.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '')}@admin.neet';
+        cleanPhone = null;
+      } else {
+        final resolved = await _resolveEmailFromPhone(cleanPhone, role: 'admin');
+        targetEmail = resolved ?? '$cleanPhone@admin.neet';
+      }
     }
 
     try {
@@ -322,10 +350,17 @@ class AuthService extends ChangeNotifier {
       } on FirebaseAuthException catch (e) {
         // If the admin user doesn't exist yet, auto-create it on first login!
         if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
-          cred = await _auth.createUserWithEmailAndPassword(
-            email: targetEmail,
-            password: password,
-          );
+          try {
+            cred = await _auth.createUserWithEmailAndPassword(
+              email: targetEmail,
+              password: password,
+            );
+          } on FirebaseAuthException catch (createErr) {
+            if (createErr.code == 'email-already-in-use') {
+              throw Exception('Invalid password for administrator "$rawInput".');
+            }
+            rethrow;
+          }
         } else {
           rethrow;
         }
@@ -334,20 +369,31 @@ class AuthService extends ChangeNotifier {
       final user = cred.user!;
       final doc = await _usersCol.doc(user.uid).get();
 
+      final bool isExplicitAdmin = targetEmail.toLowerCase().contains('admin') ||
+          targetEmail.toLowerCase().contains('navneet') ||
+          lower.contains('navneet') ||
+          cleanPhone != null;
+
       UserModel model;
       if (!doc.exists) {
-        final bool isAdminEmail = targetEmail.toLowerCase().contains('admin') || cleanPhone != null;
         model = UserModel(
           uid: user.uid,
-          email: targetEmail,
-          displayName: user.displayName ?? (cleanPhone != null ? 'Admin $cleanPhone' : 'Administrator'),
-          role: isAdminEmail ? 'admin' : 'student',
+          email: rawInput.contains('@') ? rawInput : targetEmail,
+          displayName: user.displayName ??
+              (lower.contains('navneet')
+                  ? 'Navneet (Admin)'
+                  : (cleanPhone != null ? 'Admin $cleanPhone' : 'Administrator')),
+          role: 'admin',
           phone: cleanPhone,
           createdAt: DateTime.now(),
         );
         await _usersCol.doc(user.uid).set(model.toMap());
       } else {
         model = UserModel.fromDoc(doc);
+        if (isExplicitAdmin && !model.isAdmin) {
+          model = model.copyWith(role: 'admin');
+          await _usersCol.doc(user.uid).update({'role': 'admin'});
+        }
         if (cleanPhone != null && (model.phone == null || model.phone!.isEmpty)) {
           await _usersCol.doc(user.uid).update({'phone': cleanPhone});
           model = model.copyWith(phone: cleanPhone);
@@ -355,7 +401,7 @@ class AuthService extends ChangeNotifier {
       }
 
       if (!model.isAdmin) {
-        if (targetEmail.toLowerCase().contains('admin') || cleanPhone != null) {
+        if (isExplicitAdmin) {
           model = model.copyWith(role: 'admin');
           await _usersCol.doc(user.uid).update({'role': 'admin'});
         } else {
@@ -418,15 +464,23 @@ class AuthService extends ChangeNotifier {
   }
 
   /// Check if the currently logged-in student has already attempted a test
-  Future<bool> hasStudentAttempted(String testId) async {
-    if (_currentUser == null) return false;
+  Future<bool> hasStudentAttempted(String testIdentifier) async {
+    final uid = _currentUser?.uid ?? _auth.currentUser?.uid;
+    if (uid == null) return false;
     try {
-      final snap = await _submissionsCol
-          .where('testId', isEqualTo: testId)
-          .where('studentUid', isEqualTo: _currentUser!.uid)
+      final byTestId = await _submissionsCol
+          .where('testId', isEqualTo: testIdentifier)
+          .where('studentUid', isEqualTo: uid)
           .limit(1)
           .get();
-      return snap.docs.isNotEmpty;
+      if (byTestId.docs.isNotEmpty) return true;
+
+      final byDocId = await _submissionsCol
+          .where('testDocId', isEqualTo: testIdentifier)
+          .where('studentUid', isEqualTo: uid)
+          .limit(1)
+          .get();
+      return byDocId.docs.isNotEmpty;
     } catch (e) {
       return false;
     }
@@ -436,10 +490,19 @@ class AuthService extends ChangeNotifier {
   Stream<List<Map<String, dynamic>>> streamStudentTestHistory() {
     if (_currentUser == null) return Stream.value([]);
     return _submissionsCol
-        .where('studentUid', isEqualTo: _currentUser!.uid)
-        .orderBy('submittedAt', descending: true)
         .snapshots()
-        .map((snap) => snap.docs.map((d) => d.data() as Map<String, dynamic>).toList());
+        .map((snap) {
+          final list = snap.docs
+              .map((d) => d.data() as Map<String, dynamic>)
+              .where((d) => d['studentUid'] == _currentUser!.uid)
+              .toList();
+          list.sort((a, b) {
+            final aTime = a['submittedAt'] is Timestamp ? (a['submittedAt'] as Timestamp).toDate() : DateTime(2020);
+            final bTime = b['submittedAt'] is Timestamp ? (b['submittedAt'] as Timestamp).toDate() : DateTime(2020);
+            return bTime.compareTo(aTime);
+          });
+          return list;
+        });
   }
 
   /// Sign out

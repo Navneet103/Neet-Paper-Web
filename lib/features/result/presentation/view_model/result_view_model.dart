@@ -54,11 +54,8 @@ class ResultViewModel extends ChangeNotifier {
     try {
       final test = await repository.getTest(testId);
 
-      // First try to get existing result
-      TestResult? result = await repository.getResultByTestId(testId);
-      
-      // If not found, calculate it
-      result ??= await repository.calculateAndSaveResult(testId);
+      // Always calculate/refresh result to guarantee latest evaluation and Cloud DB sync
+      final result = await repository.calculateAndSaveResult(testId);
 
       final review = await repository.getDetailedReview(testId);
 

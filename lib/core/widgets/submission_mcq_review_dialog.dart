@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:drift/drift.dart' show innerJoin, OrderingTerm;
 import 'package:intl/intl.dart';
 import '../firebase/firebase_test_service.dart';
 import '../storage/app_database.dart';
@@ -42,22 +43,46 @@ class _SubmissionMcqReviewDialogState extends State<SubmissionMcqReviewDialog> {
   Future<void> _loadQuestions() async {
     try {
       final service = sl<FirebaseTestService>();
-      final test = await service.findTestByIdOrTitle(widget.submission.testId);
+      FirebaseDailyTest? test;
+      if (widget.submission.testDocId != null && widget.submission.testDocId!.isNotEmpty) {
+        test = await service.getDailyTest(widget.submission.testDocId!);
+      }
+      test ??= await service.findTestByIdOrTitle(widget.submission.testId);
 
       if (test != null && test.questions.isNotEmpty) {
+        final loadedQuestions = test.questions;
         if (mounted) {
           setState(() {
-            _questions = test.questions;
+            _questions = loadedQuestions;
             _isLoading = false;
           });
         }
         return;
       }
 
-      // Fallback: check Drift DB questions
+      // Fallback: check Drift DB questions for this specific test
       if (sl.isRegistered<AppDatabase>()) {
         final db = sl<AppDatabase>();
-        final localQ = await db.select(db.questions).get();
+        final testNames = [
+          widget.submission.testId,
+          if (widget.submission.testDocId != null && widget.submission.testDocId!.isNotEmpty)
+            widget.submission.testDocId!,
+        ];
+        final matchingTest = await (db.select(db.tests)
+              ..where((t) => t.name.isIn(testNames)))
+            .getSingleOrNull();
+
+        List<Question> localQ = [];
+        if (matchingTest != null) {
+          final query = db.select(db.questions).join([
+            innerJoin(db.testQuestions, db.testQuestions.questionId.equalsExp(db.questions.id)),
+          ])
+            ..where(db.testQuestions.testId.equals(matchingTest.id))
+            ..orderBy([OrderingTerm.asc(db.testQuestions.orderIndex)]);
+          final rows = await query.get();
+          localQ = rows.map((r) => r.readTable(db.questions)).toList();
+        }
+
         if (localQ.isNotEmpty) {
           final mapped = localQ.map((q) => FirebaseQuestion(
             id: q.id,
@@ -339,8 +364,10 @@ class _SubmissionMcqReviewDialogState extends State<SubmissionMcqReviewDialog> {
       }
 
       // Correct / Wrong / Skipped filter
-      // Look up candidate answer by q.id or 1-indexed number
-      final candidateChoice = answersMap[q.id.toString()] ?? answersMap['${_questions.indexOf(q) + 1}'];
+      // Look up candidate answer by q.id, 1-indexed number, or 0-indexed order
+      final candidateChoice = answersMap[q.id.toString()] ??
+          answersMap['${_questions.indexOf(q) + 1}'] ??
+          answersMap['${_questions.indexOf(q)}'];
       final bool isAnswered = candidateChoice != null && candidateChoice.isNotEmpty;
       final bool isCorrect = isAnswered && candidateChoice.toUpperCase() == q.correctAnswer.toUpperCase();
       final bool isWrong = isAnswered && !isCorrect;
@@ -375,7 +402,9 @@ class _SubmissionMcqReviewDialogState extends State<SubmissionMcqReviewDialog> {
       itemBuilder: (context, index) {
         final q = filtered[index];
         final globalIndex = _questions.indexOf(q) + 1;
-        final candidateChoice = answersMap[q.id.toString()] ?? answersMap['$globalIndex'];
+        final candidateChoice = answersMap[q.id.toString()] ??
+            answersMap['$globalIndex'] ??
+            answersMap['${globalIndex - 1}'];
         final bool isAnswered = candidateChoice != null && candidateChoice.isNotEmpty;
         final bool isCorrect = isAnswered && candidateChoice.toUpperCase() == q.correctAnswer.toUpperCase();
         final bool isWrong = isAnswered && !isCorrect;

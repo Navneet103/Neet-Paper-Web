@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../../../core/storage/app_database.dart';
+import '../../../../injection/injection_container.dart';
+import '../../../result/data/repository/result_repository.dart';
 import '../../data/repository/examination_repository.dart';
 
 enum ExamStatus { initial, loading, ongoing, submitting, completed, error }
@@ -53,12 +55,17 @@ class ExaminationViewModel extends ChangeNotifier {
   final ExaminationRepository repository;
   ExaminationState _state = ExaminationState();
   Timer? _timer;
+  String? _testDocId;
+  int? _activeTestId;
+  DateTime? _examTargetEndTime;
 
   ExaminationViewModel({required this.repository});
 
   ExaminationState get state => _state;
 
-  Future<void> loadTest(int testId, List<Question> questions) async {
+  Future<void> loadTest(int testId, List<Question> questions, {String? testDocId}) async {
+    _testDocId = testDocId;
+    _activeTestId = testId;
     _state = _state.copyWith(status: ExamStatus.loading);
     notifyListeners();
 
@@ -87,13 +94,12 @@ class ExaminationViewModel extends ChangeNotifier {
         if (ans.isMarkedForReview) markedSet.add(ans.questionId);
       }
 
-      // 5. Sync Timer (Requirement 13)
-      int remaining = test.durationMinutes * 60;
-      final currentTest = await repository.watchTest(testId).first; // Re-fetch to get startedAt
-      if (currentTest?.startedAt != null) {
-        final elapsed = DateTime.now().difference(currentTest!.startedAt!).inSeconds;
-        remaining = (currentTest.durationMinutes * 60) - elapsed;
-      }
+      // 5. Sync Timer against absolute wall-clock (immune to tab throttling)
+      final currentTest = await repository.watchTest(testId).first;
+      final effectiveStart = currentTest?.startedAt ?? DateTime.now();
+      final totalMinutes = currentTest?.durationMinutes ?? test.durationMinutes;
+      _examTargetEndTime = effectiveStart.add(Duration(minutes: totalMinutes));
+      final remaining = _examTargetEndTime!.difference(DateTime.now()).inSeconds;
 
       _state = _state.copyWith(
         status: currentTest?.status == 'completed' ? ExamStatus.completed : ExamStatus.ongoing,
@@ -116,12 +122,18 @@ class ExaminationViewModel extends ChangeNotifier {
   void _startTimer() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_state.remainingSeconds <= 0) {
+      if (_examTargetEndTime == null) return;
+      final diff = _examTargetEndTime!.difference(DateTime.now()).inSeconds;
+      if (diff <= 0) {
         timer.cancel();
+        _state = _state.copyWith(remainingSeconds: 0);
+        notifyListeners();
         submitTest();
       } else {
-        _state = _state.copyWith(remainingSeconds: _state.remainingSeconds - 1);
-        notifyListeners();
+        if (_state.remainingSeconds != diff) {
+          _state = _state.copyWith(remainingSeconds: diff);
+          notifyListeners();
+        }
       }
     });
   }
@@ -140,12 +152,15 @@ class ExaminationViewModel extends ChangeNotifier {
     _state = _state.copyWith(answers: newAnswers);
     notifyListeners();
 
-    await repository.saveAnswer(
-      testId: _state.test!.id,
-      questionId: questionId,
-      selectedOption: newAnswers[questionId],
-      isMarkedForReview: _state.markedForReview.contains(questionId),
-    );
+    final testId = _activeTestId ?? _state.test?.id;
+    if (testId != null) {
+      await repository.saveAnswer(
+        testId: testId,
+        questionId: questionId,
+        selectedOption: newAnswers[questionId],
+        isMarkedForReview: _state.markedForReview.contains(questionId),
+      );
+    }
   }
 
   Future<void> toggleMarkForReview() async {
@@ -161,12 +176,15 @@ class ExaminationViewModel extends ChangeNotifier {
     _state = _state.copyWith(markedForReview: newMarked);
     notifyListeners();
 
-    await repository.saveAnswer(
-      testId: _state.test!.id,
-      questionId: questionId,
-      selectedOption: _state.answers[questionId],
-      isMarkedForReview: newMarked.contains(questionId),
-    );
+    final testId = _activeTestId ?? _state.test?.id;
+    if (testId != null) {
+      await repository.saveAnswer(
+        testId: testId,
+        questionId: questionId,
+        selectedOption: _state.answers[questionId],
+        isMarkedForReview: newMarked.contains(questionId),
+      );
+    }
   }
 
   void nextQuestion() => jumpToQuestion(_state.currentQuestionIndex + 1);
@@ -187,9 +205,36 @@ class ExaminationViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await repository.submitTest(_state.test!.id);
+      final testId = _activeTestId ?? _state.test?.id;
+      if (testId == null) {
+        throw Exception("Active test session ID not found for submission.");
+      }
+
+      // 1. Ensure all active answer selections are flushed to local database
+      for (final entry in _state.answers.entries) {
+        try {
+          await repository.saveAnswer(
+            testId: testId,
+            questionId: entry.key,
+            selectedOption: entry.value,
+            isMarkedForReview: _state.markedForReview.contains(entry.key),
+          );
+        } catch (err) {
+          debugPrint("Note: Answer auto-flush skipped for question ${entry.key}: $err");
+        }
+      }
+
+      // 2. Mark local test as completed
+      await repository.submitTest(testId);
+
+      // 3. Immediately evaluate score, save local results, and sync to Firebase Cloud DB
+      if (sl.isRegistered<ResultRepository>()) {
+        await sl<ResultRepository>().calculateAndSaveResult(testId, testDocId: _testDocId);
+      }
+
       _state = _state.copyWith(status: ExamStatus.completed);
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint("Error in submitTest: $e\n$stack");
       _state = _state.copyWith(status: ExamStatus.error, errorMessage: e.toString());
     }
     notifyListeners();

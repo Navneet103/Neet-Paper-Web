@@ -40,10 +40,21 @@ class AppRouter {
         path: '/exam/:id',
         builder: (context, state) {
           final id = int.parse(state.pathParameters['id']!);
-          final questions = state.extra as List<dynamic>?;
+          List<dynamic>? questions;
+          String? testDocId;
+
+          if (state.extra is Map<String, dynamic>) {
+            final extraMap = state.extra as Map<String, dynamic>;
+            questions = extraMap['questions'] as List<dynamic>?;
+            testDocId = extraMap['testDocId'] as String?;
+          } else if (state.extra is List<dynamic>) {
+            questions = state.extra as List<dynamic>?;
+          }
+
           return ExaminationPage(
             testId: id,
             questions: questions?.cast() ?? [],
+            testDocId: testDocId,
           );
         },
       ),

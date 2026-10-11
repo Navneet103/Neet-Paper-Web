@@ -811,7 +811,10 @@ class _DashboardPageState extends State<DashboardPage> {
               final currentEmail = sl<AuthService>().currentUser?.email;
 
               final mySub = mySubs.where((s) {
-                final matchTest = s.testId == todayTest.title || s.testId == todayTest.id;
+                final matchTest = s.testId == todayTest.title ||
+                    s.testId == todayTest.id ||
+                    s.testDocId == todayTest.id ||
+                    s.testDocId == todayTest.title;
                 final matchUser = (currentUid != null && s.studentUid == currentUid) ||
                     (currentEmail != null && currentEmail.isNotEmpty && s.studentEmail?.toLowerCase() == currentEmail.toLowerCase());
                 return matchTest && matchUser;

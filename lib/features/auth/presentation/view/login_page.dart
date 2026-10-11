@@ -77,7 +77,11 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
         password: _studentPasswordController.text,
       );
       if (!mounted) return;
-      context.go('/dashboard');
+      if (_auth.currentUser?.isAdmin == true) {
+        context.go('/admin');
+      } else {
+        context.go('/dashboard');
+      }
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -473,11 +477,35 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
           TextFormField(
             controller: _adminIdentifierController,
             decoration: const InputDecoration(
-              labelText: 'Administrator Email or Mobile Number',
-              hintText: 'e.g. admin@neet.com or 9876543210',
+              labelText: 'Administrator Email or Username',
+              hintText: 'e.g. navneet@1232 or admin@neet.com',
               prefixIcon: Icon(Icons.admin_panel_settings_outlined, size: 20),
             ),
-            validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter your admin email or mobile number' : null,
+            validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter your admin email or username' : null,
+          ),
+          const SizedBox(height: 10),
+          // Quick credential helper for admin
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              const Text(
+                'Admin ID:',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+              ),
+              ActionChip(
+                avatar: const Icon(Icons.key_rounded, size: 14, color: AppColors.primary),
+                label: const Text('navneet@1232', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                backgroundColor: AppColors.primaryLight.withValues(alpha: 0.4),
+                side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
+                onPressed: () {
+                  setState(() {
+                    _adminIdentifierController.text = 'navneet@1232';
+                    _adminPasswordController.text = '123456';
+                  });
+                },
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           TextFormField(

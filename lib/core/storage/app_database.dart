@@ -5,7 +5,7 @@ part 'app_database.g.dart';
 
 class Questions extends Table {
   IntColumn get id => integer().autoIncrement()();
-  TextColumn get questionText => text().customConstraint('UNIQUE')();
+  TextColumn get questionText => text()();
   TextColumn get optionA => text()();
   TextColumn get optionB => text()();
   TextColumn get optionC => text()();
@@ -68,7 +68,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   Future<void> clearAllData() async {
     await transaction(() async {
@@ -97,6 +97,16 @@ class AppDatabase extends _$AppDatabase {
       if (from < 2) {
         await m.drop(questions);
         await m.create(questions);
+      }
+      if (from < 3) {
+        // Recreate tables to cleanly remove the obsolete UNIQUE constraint on questionText
+        // and reset any mismatched local session state.
+        await m.drop(testResults);
+        await m.drop(userAnswers);
+        await m.drop(testQuestions);
+        await m.drop(tests);
+        await m.drop(questions);
+        await m.createAll();
       }
     },
   );
